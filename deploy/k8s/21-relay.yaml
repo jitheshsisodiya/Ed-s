@@ -1,0 +1,52 @@
+# Relay nodes forward raw UDP WireGuard traffic between peers, so they run
+# with hostNetwork so clients can reach a stable, routable UDP endpoint per
+# node (a ClusterIP Service would NAT/load-balance UDP in a way that breaks
+# a session's affinity to a single relay instance). Scale horizontally by
+# adding nodes to the relay node pool; each pod registers itself with the
+# backend's relay_servers table on startup/heartbeat.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: relay
+  namespace: nexusvpn
+  labels: { app: relay }
+spec:
+  selector:
+    matchLabels: { app: relay }
+  template:
+    metadata:
+      labels: { app: relay }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9092"
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        nexusvpn.io/relay-node: "true"
+      tolerations:
+        - key: nexusvpn.io/relay-node
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: relay
+          image: ghcr.io/jitheshsisodiya/ed-s-relay:latest
+          env:
+            - name: BACKEND_GRPC_ADDR
+              value: "backend.nexusvpn.svc.cluster.local:9090"
+            - name: RELAY_REGION
+              valueFrom:
+                fieldRef: { fieldPath: spec.nodeName }
+            - name: CONTROL_PORT
+              value: "3478"
+            - name: DATA_PORT
+              value: "3479"
+            - name: METRICS_PORT
+              value: "9092"
+          ports:
+            - { containerPort: 3478, protocol: UDP }
+            - { containerPort: 3479, protocol: UDP }
+            - { containerPort: 9092, protocol: TCP }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits: { cpu: "500m", memory: "256Mi" }

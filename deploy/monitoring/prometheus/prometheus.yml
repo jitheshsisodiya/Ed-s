@@ -1,0 +1,25 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: nexusvpn-backend
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["backend:9091"]
+        labels:
+          service: backend
+
+  - job_name: nexusvpn-relay
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["relay:9092"]
+        labels:
+          service: relay
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # In Kubernetes, additionally scrape via pod annotations:
+  # prometheus.io/scrape: "true", prometheus.io/port: "9091"

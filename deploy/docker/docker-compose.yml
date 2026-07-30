@@ -1,0 +1,139 @@
+name: nexusvpn
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nexusvpn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nexusvpn}
+      POSTGRES_DB: ${POSTGRES_DB:-nexusvpn}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nexusvpn}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [nexusvpn]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [nexusvpn]
+
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-nexusvpn}:${POSTGRES_PASSWORD:-nexusvpn}@postgres:5432/${POSTGRES_DB:-nexusvpn}?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      HTTP_PORT: ${BACKEND_HTTP_PORT:-8080}
+      GRPC_PORT: ${BACKEND_GRPC_PORT:-9090}
+      METRICS_PORT: ${BACKEND_METRICS_PORT:-9091}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-only-access-secret-change-me}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-only-refresh-secret-change-me}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-720h}
+      OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID:-}
+      OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:-}
+      OAUTH_GOOGLE_REDIRECT_URL: ${OAUTH_GOOGLE_REDIRECT_URL:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@nexusvpn.local}
+      LOG_LEVEL: info
+    ports:
+      - "${BACKEND_HTTP_PORT:-8080}:8080"
+      - "${BACKEND_GRPC_PORT:-9090}:9090"
+      - "${BACKEND_METRICS_PORT:-9091}:9091"
+    networks: [nexusvpn]
+
+  relay:
+    build:
+      context: ../../relay
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      BACKEND_GRPC_ADDR: backend:9090
+      RELAY_REGION: ${RELAY_REGION:-local}
+      RELAY_PUBLIC_HOSTNAME: ${RELAY_PUBLIC_HOSTNAME:-localhost}
+      CONTROL_PORT: ${RELAY_CONTROL_PORT:-3478}
+      DATA_PORT: ${RELAY_DATA_PORT:-3479}
+      METRICS_PORT: ${RELAY_METRICS_PORT:-9092}
+    ports:
+      - "${RELAY_CONTROL_PORT:-3478}:3478/udp"
+      - "${RELAY_DATA_PORT:-3479}:3479/udp"
+      - "${RELAY_METRICS_PORT:-9092}:9092"
+    networks: [nexusvpn]
+
+  admin:
+    build:
+      context: ../../admin
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080/api/v1}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      API_PROXY_TARGET: http://backend:8080
+    ports:
+      - "${ADMIN_HTTP_PORT:-3000}:80"
+    networks: [nexusvpn]
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    restart: unless-stopped
+    volumes:
+      - ../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9095}:9090"
+    networks: [nexusvpn]
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    networks: [nexusvpn]
+
+networks:
+  nexusvpn:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:

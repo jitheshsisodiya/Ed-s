@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package nexusvpn.coordination.v1;
 
-option go_package = "github.com/jitheshsisodiya/ed-s/backend/gen/coordination/v1;coordinationv1";
+option go_package = "github.com/jitheshsisodiya/Ed-s/backend/gen/coordination/v1;coordinationv1";
 
 import "google/protobuf/timestamp.proto";
 
