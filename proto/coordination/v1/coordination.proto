@@ -1,0 +1,138 @@
+syntax = "proto3";
+
+package nexusvpn.coordination.v1;
+
+option go_package = "github.com/jitheshsisodiya/ed-s/backend/gen/coordination/v1;coordinationv1";
+
+import "google/protobuf/timestamp.proto";
+
+// CoordinationService is the control-plane gRPC API used by the NexusVPN
+// client agent to register itself, discover peers on its networks, exchange
+// ICE/NAT information for hole punching, and request relay allocation when
+// direct peer-to-peer connectivity is not possible.
+service CoordinationService {
+  // RegisterDevice authenticates a device (via its device key + JWT) and
+  // returns its assigned virtual IP and current network topology.
+  rpc RegisterDevice(RegisterDeviceRequest) returns (RegisterDeviceResponse);
+
+  // Heartbeat reports liveness, NAT/endpoint info, and traffic counters.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  // StreamPeerUpdates is a server-streaming RPC that pushes peer topology
+  // changes (joins, leaves, endpoint changes) for all networks the device
+  // belongs to, so the client can keep its local WireGuard peer table live.
+  rpc StreamPeerUpdates(StreamPeerUpdatesRequest) returns (stream PeerUpdate);
+
+  // ExchangeICECandidates relays STUN-discovered candidate endpoints between
+  // two peers to negotiate the best path (direct vs relay) for UDP hole punching.
+  rpc ExchangeICECandidates(ICEExchangeRequest) returns (ICEExchangeResponse);
+
+  // RequestRelay asks the control plane for the least-loaded relay server
+  // to fall back to when direct P2P connectivity cannot be established.
+  rpc RequestRelay(RequestRelayRequest) returns (RequestRelayResponse);
+}
+
+message Endpoint {
+  string ip = 1;
+  uint32 port = 2;
+  string protocol = 3; // "udp" | "tcp"
+}
+
+enum NATType {
+  NAT_TYPE_UNSPECIFIED = 0;
+  NAT_TYPE_OPEN = 1;
+  NAT_TYPE_FULL_CONE = 2;
+  NAT_TYPE_RESTRICTED_CONE = 3;
+  NAT_TYPE_PORT_RESTRICTED_CONE = 4;
+  NAT_TYPE_SYMMETRIC = 5;
+}
+
+message RegisterDeviceRequest {
+  string device_public_key = 1;
+  string network_id = 2;
+  string device_name = 3;
+  string os = 4;
+  string os_version = 5;
+  string client_version = 6;
+}
+
+message RegisterDeviceResponse {
+  string device_id = 1;
+  string assigned_virtual_ip = 2;
+  string network_cidr = 3;
+  repeated string dns_servers = 4;
+  repeated Peer existing_peers = 5;
+}
+
+message Peer {
+  string device_id = 1;
+  string device_name = 2;
+  string public_key = 3;
+  string virtual_ip = 4;
+  Endpoint last_known_endpoint = 5;
+  NATType nat_type = 6;
+  bool online = 7;
+  google.protobuf.Timestamp last_seen = 8;
+}
+
+message HeartbeatRequest {
+  string device_id = 1;
+  Endpoint public_endpoint = 2;
+  Endpoint private_endpoint = 3;
+  NATType nat_type = 4;
+  uint64 bytes_sent = 5;
+  uint64 bytes_received = 6;
+}
+
+message HeartbeatResponse {
+  bool ok = 1;
+  int32 next_heartbeat_seconds = 2;
+}
+
+message StreamPeerUpdatesRequest {
+  string device_id = 1;
+}
+
+enum PeerUpdateType {
+  PEER_UPDATE_TYPE_UNSPECIFIED = 0;
+  PEER_UPDATE_TYPE_JOINED = 1;
+  PEER_UPDATE_TYPE_LEFT = 2;
+  PEER_UPDATE_TYPE_ENDPOINT_CHANGED = 3;
+  PEER_UPDATE_TYPE_STATUS_CHANGED = 4;
+}
+
+message PeerUpdate {
+  PeerUpdateType type = 1;
+  Peer peer = 2;
+  string network_id = 3;
+}
+
+message ICECandidate {
+  Endpoint endpoint = 1;
+  string type = 2; // "host" | "srflx" | "relay"
+  uint32 priority = 3;
+}
+
+message ICEExchangeRequest {
+  string device_id = 1;
+  string target_device_id = 2;
+  repeated ICECandidate candidates = 3;
+}
+
+message ICEExchangeResponse {
+  repeated ICECandidate peer_candidates = 1;
+}
+
+message RequestRelayRequest {
+  string device_id = 1;
+  string network_id = 2;
+  string preferred_region = 3;
+}
+
+message RequestRelayResponse {
+  string relay_id = 1;
+  string hostname = 2;
+  uint32 relay_port = 3;
+  string relay_public_key = 4;
+  string session_token = 5;
+}

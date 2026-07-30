@@ -1,0 +1,561 @@
+openapi: 3.0.3
+info:
+  title: NexusVPN Control Plane API
+  description: >
+    REST API for the NexusVPN control plane: authentication, network
+    management, device management, invites, audit/connection logs and
+    dashboard analytics. Real-time peer signaling is served separately over
+    WebSocket (`/api/v1/ws`) and gRPC (`proto/coordination/v1`).
+  version: "1.0.0"
+  license:
+    name: MIT
+servers:
+  - url: https://api.nexusvpn.example.com/api/v1
+  - url: http://localhost:8080/api/v1
+tags:
+  - name: auth
+  - name: networks
+  - name: devices
+  - name: logs
+  - name: dashboard
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+      required: [error]
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        mfaEnabled: { type: boolean }
+        status: { type: string, enum: [active, disabled, pending_verification] }
+        createdAt: { type: string, format: date-time }
+    RegisterRequest:
+      type: object
+      required: [email, password, displayName]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 12 }
+        displayName: { type: string }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+        mfaCode: { type: string }
+    TokenPair:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        expiresIn: { type: integer }
+        mfaRequired: { type: boolean }
+    Network:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        cidr: { type: string, example: "10.77.0.0/24" }
+        dnsServers: { type: array, items: { type: string } }
+        role: { type: string, enum: [owner, admin, member] }
+        memberCount: { type: integer }
+        deviceCount: { type: integer }
+        inviteCode: { type: string }
+        createdAt: { type: string, format: date-time }
+    NetworkCreateRequest:
+      type: object
+      required: [name, cidr]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        cidr: { type: string }
+        dnsServers: { type: array, items: { type: string } }
+    JoinNetworkRequest:
+      type: object
+      required: [inviteCode]
+      properties:
+        inviteCode: { type: string }
+    Member:
+      type: object
+      properties:
+        userId: { type: string, format: uuid }
+        email: { type: string }
+        displayName: { type: string }
+        role: { type: string, enum: [owner, admin, member] }
+        joinedAt: { type: string, format: date-time }
+    Device:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        os: { type: string }
+        osVersion: { type: string }
+        publicKey: { type: string }
+        virtualIp: { type: string }
+        lastPublicIp: { type: string }
+        status: { type: string, enum: [online, offline, unknown] }
+        natType: { type: string }
+        latencyMs: { type: integer }
+        bytesSent: { type: integer, format: int64 }
+        bytesReceived: { type: integer, format: int64 }
+        lastSeenAt: { type: string, format: date-time }
+    DeviceRegisterRequest:
+      type: object
+      required: [name, os, publicKey]
+      properties:
+        name: { type: string }
+        os: { type: string }
+        osVersion: { type: string }
+        publicKey: { type: string }
+    ConnectionLog:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        deviceId: { type: string }
+        peerDeviceId: { type: string }
+        eventType: { type: string }
+        latencyMs: { type: integer }
+        createdAt: { type: string, format: date-time }
+    AuditLog:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        actorUserId: { type: string }
+        action: { type: string }
+        targetType: { type: string }
+        targetId: { type: string }
+        createdAt: { type: string, format: date-time }
+    DashboardStats:
+      type: object
+      properties:
+        activeUsers: { type: integer }
+        activeNetworks: { type: integer }
+        onlineDevices: { type: integer }
+        totalDevices: { type: integer }
+        relayBandwidthBytes: { type: integer, format: int64 }
+        p2pConnectionRatio: { type: number, format: float }
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '409': { description: Email already registered, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+        '401': { description: Invalid credentials }
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: New token pair
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      responses:
+        '204': { description: Logged out }
+
+  /auth/mfa/enable:
+    post:
+      tags: [auth]
+      responses:
+        '200':
+          description: TOTP secret + QR provisioning URI
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  secret: { type: string }
+                  otpauthUrl: { type: string }
+
+  /auth/mfa/verify:
+    post:
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        '200': { description: MFA enabled/verified }
+
+  /auth/password/forgot:
+    post:
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string }
+      responses:
+        '202': { description: Reset email sent if account exists }
+
+  /auth/password/reset:
+    post:
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token: { type: string }
+                newPassword: { type: string }
+      responses:
+        '200': { description: Password updated }
+
+  /auth/oauth/{provider}/redirect:
+    get:
+      tags: [auth]
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string, enum: [google, github] }
+      responses:
+        '302': { description: Redirect to OAuth provider }
+
+  /auth/oauth/{provider}/callback:
+    get:
+      tags: [auth]
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string }
+        - name: code
+          in: query
+          required: true
+          schema: { type: string }
+        - name: state
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Authenticated via OAuth
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+
+  /networks:
+    get:
+      tags: [networks]
+      responses:
+        '200':
+          description: List of networks the current user belongs to
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Network' }
+    post:
+      tags: [networks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NetworkCreateRequest' }
+      responses:
+        '201':
+          description: Network created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Network' }
+
+  /networks/join:
+    post:
+      tags: [networks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JoinNetworkRequest' }
+      responses:
+        '200':
+          description: Joined network
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Network' }
+
+  /networks/{networkId}:
+    parameters:
+      - name: networkId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [networks]
+      responses:
+        '200':
+          description: Network details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Network' }
+    patch:
+      tags: [networks]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NetworkCreateRequest' }
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [networks]
+      responses:
+        '204': { description: Deleted }
+
+  /networks/{networkId}/invite:
+    post:
+      tags: [networks]
+      parameters:
+        - name: networkId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Rotated invite code
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  inviteCode: { type: string }
+                  expiresAt: { type: string, format: date-time }
+
+  /networks/{networkId}/members:
+    parameters:
+      - name: networkId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [networks]
+      responses:
+        '200':
+          description: Members
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Member' }
+
+  /networks/{networkId}/members/{userId}:
+    parameters:
+      - name: networkId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: userId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [networks]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { type: string, enum: [admin, member] }
+      responses:
+        '200': { description: Role updated }
+    delete:
+      tags: [networks]
+      responses:
+        '204': { description: Member removed }
+
+  /networks/{networkId}/devices:
+    parameters:
+      - name: networkId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [devices]
+      responses:
+        '200':
+          description: Devices on this network
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Device' }
+    post:
+      tags: [devices]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceRegisterRequest' }
+      responses:
+        '201':
+          description: Device registered, virtual IP assigned
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Device' }
+
+  /devices/{deviceId}:
+    parameters:
+      - name: deviceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [devices]
+      responses:
+        '200':
+          description: Device detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Device' }
+    delete:
+      tags: [devices]
+      responses:
+        '204': { description: Device removed }
+
+  /devices/{deviceId}/heartbeat:
+    post:
+      tags: [devices]
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Heartbeat accepted }
+
+  /devices/{deviceId}/peers:
+    get:
+      tags: [devices]
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Peer list with endpoints for this device's networks
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Device' }
+
+  /logs/audit:
+    get:
+      tags: [logs]
+      parameters:
+        - name: networkId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Audit logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AuditLog' }
+
+  /logs/connections:
+    get:
+      tags: [logs]
+      parameters:
+        - name: networkId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Connection logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ConnectionLog' }
+
+  /dashboard/stats:
+    get:
+      tags: [dashboard]
+      responses:
+        '200':
+          description: Aggregate stats for the admin dashboard
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DashboardStats' }
