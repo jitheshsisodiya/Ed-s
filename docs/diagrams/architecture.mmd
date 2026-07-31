@@ -1,0 +1,47 @@
+flowchart LR
+    subgraph Clients
+        Desktop["Desktop App (Wails)"]
+        Mobile["Mobile App (Flutter)"]
+        AdminUI["Admin Panel (React)"]
+    end
+
+    subgraph ControlPlane["Control Plane (backend/)"]
+        REST["REST API"]
+        GRPC["gRPC Coordination Service"]
+        WS["WebSocket Signaling"]
+        Auth["Auth Service (JWT/OAuth/MFA)"]
+        NetSvc["Network Service"]
+        DevSvc["Device Service"]
+    end
+
+    PG[(PostgreSQL)]
+    Redis[(Redis - presence/pubsub)]
+
+    subgraph RelayCluster["Relay Cluster (relay/)"]
+        Relay1["Relay Node A"]
+        Relay2["Relay Node B"]
+    end
+
+    Desktop -- HTTPS/JSON --> REST
+    Desktop -- gRPC/TLS --> GRPC
+    Desktop -- WSS --> WS
+    Mobile -- HTTPS/JSON --> REST
+    Mobile -- gRPC/TLS --> GRPC
+    AdminUI -- HTTPS/JSON --> REST
+
+    REST --> Auth
+    REST --> NetSvc
+    REST --> DevSvc
+    GRPC --> DevSvc
+    WS --> DevSvc
+
+    Auth --> PG
+    NetSvc --> PG
+    DevSvc --> PG
+    DevSvc --> Redis
+    WS --> Redis
+
+    Desktop -. "Direct WireGuard UDP (P2P, when NAT allows)" .-> Mobile
+    Desktop -. "Relayed WireGuard UDP" .-> Relay1
+    Relay1 -. relayed .-> Mobile
+    DevSvc -- "relay allocation" --> RelayCluster

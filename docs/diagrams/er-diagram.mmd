@@ -1,0 +1,58 @@
+erDiagram
+    USERS ||--o{ REFRESH_TOKENS : has
+    USERS ||--o{ NETWORKS : owns
+    USERS ||--o{ NETWORK_MEMBERS : "is member"
+    NETWORKS ||--o{ NETWORK_MEMBERS : has
+    NETWORKS ||--o{ DEVICES : contains
+    USERS ||--o{ DEVICES : registers
+    NETWORKS ||--o{ AUDIT_LOGS : scopes
+    NETWORKS ||--o{ CONNECTION_LOGS : scopes
+    DEVICES ||--o{ CONNECTION_LOGS : generates
+    RELAY_SERVERS ||--o{ CONNECTION_LOGS : "relays via"
+
+    USERS {
+        uuid id PK
+        citext email
+        text password_hash
+        text display_name
+        user_status status
+        bool mfa_enabled
+    }
+    NETWORKS {
+        uuid id PK
+        text name
+        cidr cidr
+        uuid owner_id FK
+        text invite_code
+    }
+    NETWORK_MEMBERS {
+        uuid id PK
+        uuid network_id FK
+        uuid user_id FK
+        network_role role
+    }
+    DEVICES {
+        uuid id PK
+        uuid user_id FK
+        uuid network_id FK
+        text public_key
+        inet virtual_ip
+        device_status status
+    }
+    RELAY_SERVERS {
+        uuid id PK
+        text region
+        text hostname
+        int capacity
+    }
+    CONNECTION_LOGS {
+        uuid id PK
+        uuid network_id FK
+        uuid device_id FK
+        connection_event_type event_type
+    }
+    AUDIT_LOGS {
+        uuid id PK
+        uuid actor_user_id FK
+        audit_action action
+    }

@@ -1,0 +1,35 @@
+flowchart TB
+    subgraph Internet
+        U1[Desktop/Mobile Clients]
+    end
+
+    subgraph K8sCluster["Kubernetes Cluster"]
+        subgraph IngressNS["ingress-nginx"]
+            Ingress[Ingress / TLS termination]
+        end
+        subgraph AppNS["nexusvpn namespace"]
+            BackendDeploy["backend Deployment (HPA, 3-10 replicas)"]
+            RelayDeploy["relay Deployment (DaemonSet-like, hostNetwork)"]
+            AdminDeploy["admin Deployment"]
+        end
+        subgraph DataNS["data namespace"]
+            PGPrimary[(Postgres Primary)]
+            PGReplica[(Postgres Replica)]
+            RedisCluster[(Redis Cluster)]
+        end
+        subgraph ObsNS["observability namespace"]
+            Prom[Prometheus]
+            Graf[Grafana]
+        end
+    end
+
+    U1 -->|HTTPS/WSS| Ingress
+    U1 -->|UDP WireGuard| RelayDeploy
+    Ingress --> BackendDeploy
+    Ingress --> AdminDeploy
+    BackendDeploy --> PGPrimary
+    PGPrimary --> PGReplica
+    BackendDeploy --> RedisCluster
+    BackendDeploy -.metrics.-> Prom
+    RelayDeploy -.metrics.-> Prom
+    Prom --> Graf

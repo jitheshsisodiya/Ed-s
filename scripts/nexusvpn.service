@@ -1,0 +1,40 @@
+[Unit]
+Description=NexusVPN client tunnel
+Documentation=https://github.com/jitheshsisodiya/Ed-s
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Creating a TUN interface needs CAP_NET_ADMIN, and `up` reads the session
+# from root's config directory (written by `sudo nexusvpnctl login`).
+ExecStart=/usr/local/bin/nexusvpnctl up
+Restart=on-failure
+RestartSec=5s
+
+# The tunnel is torn down when the process stops, so a clean SIGTERM is all
+# that's needed; give it a moment to deregister before SIGKILL.
+KillSignal=SIGTERM
+TimeoutStopSec=20s
+
+# Hardening: the client needs raw network access and its own config, and
+# nothing else.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+# Config lives under /root/.config/nexusvpn; ProtectSystem=strict makes the
+# rest of the filesystem read-only.
+ReadWritePaths=/root/.config
+CapabilityBoundingSet=CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_ADMIN
+
+[Install]
+WantedBy=multi-user.target

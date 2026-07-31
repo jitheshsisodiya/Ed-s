@@ -1,0 +1,24 @@
+sequenceDiagram
+    participant A as Device A (client)
+    participant CP as Control Plane
+    participant B as Device B (client)
+    participant R as Relay Node
+
+    A->>CP: RegisterDevice(pubkey, networkId, inviteCode-derived JWT)
+    CP-->>A: virtual IP, existing peers, network CIDR
+    A->>CP: Heartbeat(publicEndpoint, natType)
+    CP-->>B: StreamPeerUpdates: PEER_JOINED(A)
+    B->>CP: ExchangeICECandidates(target=A, candidates)
+    CP-->>A: ExchangeICECandidates response (B's candidates)
+    A->>B: UDP hole-punch WireGuard handshake (direct)
+    alt Direct handshake succeeds
+        A->>B: Encrypted WireGuard traffic (P2P)
+    else Direct handshake times out (symmetric NAT)
+        A->>CP: RequestRelay(networkId)
+        CP-->>A: relay endpoint + session token
+        B->>CP: RequestRelay(networkId)
+        CP-->>B: relay endpoint + session token
+        A->>R: Encrypted WireGuard traffic
+        R->>B: Forwarded encrypted WireGuard traffic
+    end
+    A->>CP: Heartbeat(bytesSent, bytesReceived) [periodic]
