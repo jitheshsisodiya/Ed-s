@@ -4,6 +4,9 @@ import 'dart:convert';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
 import 'package:wireguard_flutter/wireguard_flutter.dart';
+// The plugin's entrypoint re-exports only VpnStage, so the interface type
+// used for dependency injection (and faking in tests) comes from here.
+import 'package:wireguard_flutter/wireguard_flutter_platform_interface.dart';
 
 import 'api_client.dart';
 import 'app_exception.dart';

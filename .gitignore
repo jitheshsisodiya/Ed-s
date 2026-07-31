@@ -50,3 +50,7 @@ coverage.html
 # Wails build output
 desktop/build/bin/
 desktop/desktop
+
+# Flutter
+mobile/.dart_tool/
+mobile/build/

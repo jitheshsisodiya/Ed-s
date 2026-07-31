@@ -4,8 +4,8 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.10.0 <4.0.0'
-  flutter: '>=3.38.0'
+  sdk: '>=3.9.0 <4.0.0'
+  flutter: '>=3.35.0'
 
 dependencies:
   flutter:
@@ -18,10 +18,10 @@ dependencies:
   flutter_secure_storage: ^10.3.1
 
   # State management
-  provider: ^6.1.5
+  provider: ^6.1.5+1
 
   # Declarative routing + auth redirects
-  go_router: ^17.3.0
+  go_router: ^17.2.3
 
   # WireGuard tunnel plugin (Android VpnService / iOS NetworkExtension bridge).
   # Native App/Network Extension entitlements still need a real Apple/Google
@@ -38,7 +38,7 @@ dependencies:
   # Misc platform helpers
   shared_preferences: ^2.5.5
   connectivity_plus: ^7.3.1
-  package_info_plus: ^10.2.1
+  package_info_plus: ^9.0.1
   crypto: ^3.0.7
   cryptography: ^2.9.0
   uuid: ^4.6.0
@@ -49,8 +49,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  mockito: ^5.7.0
-  build_runner: ^2.15.3
+  mockito: ^5.6.4
+  build_runner: ^2.15.1
 
 flutter:
   uses-material-design: true

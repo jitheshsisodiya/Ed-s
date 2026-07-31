@@ -330,9 +330,9 @@ class ApiClient {
       '/networks',
       body: {
         'name': name,
-        if (description != null) 'description': description,
+        'description': ?description,
         'cidr': cidr,
-        if (dnsServers != null) 'dnsServers': dnsServers,
+        'dnsServers': ?dnsServers,
       },
     );
     return Network.fromJson(json as Map<String, dynamic>);
@@ -363,10 +363,10 @@ class ApiClient {
       'PATCH',
       '/networks/$networkId',
       body: {
-        if (name != null) 'name': name,
-        if (description != null) 'description': description,
-        if (cidr != null) 'cidr': cidr,
-        if (dnsServers != null) 'dnsServers': dnsServers,
+        'name': ?name,
+        'description': ?description,
+        'cidr': ?cidr,
+        'dnsServers': ?dnsServers,
       },
     );
   }
@@ -431,7 +431,7 @@ class ApiClient {
       body: {
         'name': name,
         'os': os,
-        if (osVersion != null) 'osVersion': osVersion,
+        'osVersion': ?osVersion,
         'publicKey': publicKey,
       },
     );
@@ -467,7 +467,7 @@ class ApiClient {
     final json = await _request(
       'GET',
       '/logs/audit',
-      query: {if (networkId != null) 'networkId': networkId},
+      query: {'networkId': ?networkId},
     ) as List<dynamic>;
     return json
         .map((e) => AuditLog.fromJson(e as Map<String, dynamic>))
@@ -478,7 +478,7 @@ class ApiClient {
     final json = await _request(
       'GET',
       '/logs/connections',
-      query: {if (networkId != null) 'networkId': networkId},
+      query: {'networkId': ?networkId},
     ) as List<dynamic>;
     return json
         .map((e) => ConnectionLog.fromJson(e as Map<String, dynamic>))

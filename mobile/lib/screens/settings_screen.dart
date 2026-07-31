@@ -95,6 +95,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _rotateKey() async {
+    final vpn = context.read<VpnController>();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -122,7 +123,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
     if (confirmed != true) return;
-    final vpn = context.read<VpnController>();
     if (vpn.state == AppVpnState.connected) {
       await vpn.disconnect();
     }
@@ -150,6 +150,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final formKey = GlobalKey<FormState>();
     bool submitting = false;
     String? error;
+    // Captured up front: the dialog's own context is gone once it pops, and
+    // this State's context is unsafe to touch after the await.
+    final messenger = ScaffoldMessenger.of(context);
 
     await showDialog<void>(
       context: context,
@@ -210,11 +213,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       final ok = await auth.verifyMfaSetup(codeController.text.trim());
                       if (ok) {
                         if (dialogContext.mounted) Navigator.of(dialogContext).pop();
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Two-factor authentication enabled.')),
-                          );
-                        }
+                        messenger.showSnackBar(
+                          const SnackBar(content: Text('Two-factor authentication enabled.')),
+                        );
                       } else {
                         setDialogState(() {
                           submitting = false;
@@ -237,6 +238,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _logout() async {
+    final vpn = context.read<VpnController>();
+    final auth = context.read<AuthProvider>();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -258,12 +261,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
     if (confirmed != true) return;
-    final vpn = context.read<VpnController>();
     if (vpn.state == AppVpnState.connected) {
       await vpn.disconnect();
     }
-    if (!mounted) return;
-    await context.read<AuthProvider>().logout();
+    await auth.logout();
     if (mounted) context.go('/login');
   }
 

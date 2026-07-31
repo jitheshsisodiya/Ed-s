@@ -132,6 +132,9 @@ class _NetworkDetailScreenState extends State<NetworkDetailScreen> {
   }
 
   Future<void> _confirmDeleteNetwork(Network network) async {
+    // Captured before the dialog: reading an inherited widget after an
+    // await is unsafe, since this State may have been disposed by then.
+    final api = context.read<AuthProvider>().api;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -157,7 +160,7 @@ class _NetworkDetailScreenState extends State<NetworkDetailScreen> {
     );
     if (confirmed != true) return;
     try {
-      await context.read<AuthProvider>().api.deleteNetwork(network.id);
+      await api.deleteNetwork(network.id);
       if (mounted) context.pop();
     } on ApiException catch (e) {
       if (mounted) {

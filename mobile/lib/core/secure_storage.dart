@@ -8,8 +8,13 @@ class SecureStorage {
 
   static final SecureStorage instance = SecureStorage._();
 
+  // Android: the plugin encrypts with its own ciphers backed by the
+  // Keystore. (The old encryptedSharedPreferences option is deprecated and
+  // ignored — Google deprecated the Jetpack Security library it used.)
+  // iOS: first_unlock keeps the keychain item readable by the VPN extension
+  // after a reboot, while still requiring the device to have been unlocked
+  // once, and it is never synchronised to iCloud.
   static const _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
     iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
   );
 

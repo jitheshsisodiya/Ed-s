@@ -146,6 +146,9 @@ class _DevicesScreenState extends State<DevicesScreen> {
   }
 
   Future<void> _confirmDelete(Device device) async {
+    // Captured before the dialog: reading an inherited widget after an
+    // await is unsafe, since this State may have been disposed by then.
+    final api = context.read<AuthProvider>().api;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -169,7 +172,7 @@ class _DevicesScreenState extends State<DevicesScreen> {
     );
     if (confirmed != true) return;
     try {
-      await context.read<AuthProvider>().api.deleteDevice(device.id);
+      await api.deleteDevice(device.id);
       await _refresh();
     } on ApiException catch (e) {
       if (mounted) {
