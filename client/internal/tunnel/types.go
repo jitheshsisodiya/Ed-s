@@ -40,8 +40,10 @@ const (
 // PeerStatus is a snapshot of one peer's connectivity, as surfaced by
 // `nexusvpnctl status` and the desktop UI.
 type PeerStatus struct {
-	DeviceID      string
-	DeviceName    string
+	DeviceID   string
+	DeviceName string
+	// OS is the peer's platform, as reported by the control plane.
+	OS            string
 	PublicKey     string
 	VirtualIP     string
 	Mode          ConnectionMode

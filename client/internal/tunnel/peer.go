@@ -32,6 +32,7 @@ type peer struct {
 
 	deviceID   uuid.UUID
 	deviceName string
+	deviceOS   string
 	publicKey  string
 	virtualIP  string
 
@@ -55,6 +56,7 @@ func (p *peer) snapshot(dev WireGuardDevice, paths PathProber) PeerStatus {
 	status := PeerStatus{
 		DeviceID:   p.deviceID.String(),
 		DeviceName: p.deviceName,
+		OS:         p.deviceOS,
 		PublicKey:  p.publicKey,
 		VirtualIP:  p.virtualIP,
 		Mode:       p.mode,
@@ -118,6 +120,7 @@ func (t *Tunnel) addPeer(ctx context.Context, p *coordinationv1.Peer) error {
 	pr := &peer{
 		deviceID:   deviceID,
 		deviceName: p.GetDeviceName(),
+		deviceOS:   p.GetOs(),
 		publicKey:  p.GetPublicKey(),
 		virtualIP:  p.GetVirtualIp(),
 		remote:     endpointFromProto(p.GetLastKnownEndpoint()),
@@ -131,6 +134,9 @@ func (t *Tunnel) addPeer(ctx context.Context, p *coordinationv1.Peer) error {
 		t.mu.Unlock()
 		existing.mu.Lock()
 		existing.deviceName = p.GetDeviceName()
+		if os := p.GetOs(); os != "" {
+			existing.deviceOS = os
+		}
 		if ep := endpointFromProto(p.GetLastKnownEndpoint()); ep != nil {
 			existing.remote = ep
 		}

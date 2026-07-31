@@ -31,6 +31,7 @@ export namespace agent {
 	export class Peer {
 	    deviceId: string;
 	    deviceName: string;
+	    os: string;
 	    virtualIp: string;
 	    mode: string;
 	    endpoint: string;
@@ -38,6 +39,7 @@ export namespace agent {
 	    bytesSent: number;
 	    bytesReceived: number;
 	    latencyMs: number;
+	    quality: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Peer(source);
@@ -47,6 +49,7 @@ export namespace agent {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.deviceId = source["deviceId"];
 	        this.deviceName = source["deviceName"];
+	        this.os = source["os"];
 	        this.virtualIp = source["virtualIp"];
 	        this.mode = source["mode"];
 	        this.endpoint = source["endpoint"];
@@ -54,6 +57,7 @@ export namespace agent {
 	        this.bytesSent = source["bytesSent"];
 	        this.bytesReceived = source["bytesReceived"];
 	        this.latencyMs = source["latencyMs"];
+	        this.quality = source["quality"];
 	    }
 	}
 	export class Session {

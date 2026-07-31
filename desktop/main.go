@@ -18,14 +18,16 @@ func main() {
 	// Create application with options
 	err := wails.Run(&options.App{
 		Title:     "NexusVPN",
-		Width:     1100,
-		Height:    760,
-		MinWidth:  900,
-		MinHeight: 600,
+		Width:     620,
+		Height:    800,
+		MinWidth:  460,
+		MinHeight: 620,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
+		// Matches the light theme's page background so there is no flash of
+		// a foreign colour before the webview paints.
+		BackgroundColour: &options.RGBA{R: 0xF6, G: 0xF7, B: 0xF9, A: 1},
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
 		Bind: []interface{}{

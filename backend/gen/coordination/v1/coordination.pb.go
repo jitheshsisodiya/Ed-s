@@ -365,8 +365,12 @@ type Peer struct {
 	NatType           NATType                `protobuf:"varint,6,opt,name=nat_type,json=natType,proto3,enum=nexusvpn.coordination.v1.NATType" json:"nat_type,omitempty"`
 	Online            bool                   `protobuf:"varint,7,opt,name=online,proto3" json:"online,omitempty"`
 	LastSeen          *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=last_seen,json=lastSeen,proto3" json:"last_seen,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// os is the peer's platform ("windows", "macos", "linux", "android",
+	// "ios", "windows_server" or "unknown"). Frontends use it to show a
+	// recognisable icon per device; it carries no security meaning.
+	Os            string `protobuf:"bytes,9,opt,name=os,proto3" json:"os,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Peer) Reset() {
@@ -453,6 +457,13 @@ func (x *Peer) GetLastSeen() *timestamppb.Timestamp {
 		return x.LastSeen
 	}
 	return nil
+}
+
+func (x *Peer) GetOs() string {
+	if x != nil {
+		return x.Os
+	}
+	return ""
 }
 
 type HeartbeatRequest struct {
@@ -1020,7 +1031,7 @@ const file_proto_coordination_v1_coordination_proto_rawDesc = "" +
 	"\fnetwork_cidr\x18\x03 \x01(\tR\vnetworkCidr\x12\x1f\n" +
 	"\vdns_servers\x18\x04 \x03(\tR\n" +
 	"dnsServers\x12E\n" +
-	"\x0eexisting_peers\x18\x05 \x03(\v2\x1e.nexusvpn.coordination.v1.PeerR\rexistingPeers\"\xe5\x02\n" +
+	"\x0eexisting_peers\x18\x05 \x03(\v2\x1e.nexusvpn.coordination.v1.PeerR\rexistingPeers\"\xf5\x02\n" +
 	"\x04Peer\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12\x1f\n" +
 	"\vdevice_name\x18\x02 \x01(\tR\n" +
@@ -1032,7 +1043,8 @@ const file_proto_coordination_v1_coordination_proto_rawDesc = "" +
 	"\x13last_known_endpoint\x18\x05 \x01(\v2\".nexusvpn.coordination.v1.EndpointR\x11lastKnownEndpoint\x12<\n" +
 	"\bnat_type\x18\x06 \x01(\x0e2!.nexusvpn.coordination.v1.NATTypeR\anatType\x12\x16\n" +
 	"\x06online\x18\a \x01(\bR\x06online\x127\n" +
-	"\tlast_seen\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\blastSeen\"\xcf\x02\n" +
+	"\tlast_seen\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\blastSeen\x12\x0e\n" +
+	"\x02os\x18\t \x01(\tR\x02os\"\xcf\x02\n" +
 	"\x10HeartbeatRequest\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12K\n" +
 	"\x0fpublic_endpoint\x18\x02 \x01(\v2\".nexusvpn.coordination.v1.EndpointR\x0epublicEndpoint\x12M\n" +

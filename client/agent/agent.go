@@ -59,8 +59,11 @@ type Network struct {
 
 // Peer is one peer's live connectivity.
 type Peer struct {
-	DeviceID      string `json:"deviceId"`
-	DeviceName    string `json:"deviceName"`
+	DeviceID   string `json:"deviceId"`
+	DeviceName string `json:"deviceName"`
+	// OS is the peer's platform, so a frontend can show a recognisable
+	// icon per device rather than one generic glyph.
+	OS            string `json:"os"`
 	VirtualIP     string `json:"virtualIp"`
 	Mode          string `json:"mode"`
 	Endpoint      string `json:"endpoint"`
@@ -69,6 +72,49 @@ type Peer struct {
 	BytesReceived uint64 `json:"bytesReceived"`
 	// LatencyMs is the measured round-trip time, or -1 if not yet probed.
 	LatencyMs int `json:"latencyMs"`
+	// Quality is the plain-language connection health a user actually sees:
+	// "Excellent", "Good", "Limited" or "Offline". Derived here rather than
+	// in each frontend so the CLI and the apps can never disagree about what
+	// a connection is worth.
+	Quality string `json:"quality"`
+}
+
+// Connection health, in the words shown to users. The thresholds are about
+// perceptibility, not networking: under 50ms feels instant, under 150ms
+// feels responsive, and anything relayed is working-but-slower by
+// definition because it takes an extra hop.
+const (
+	QualityExcellent = "Excellent"
+	QualityGood      = "Good"
+	QualityLimited   = "Limited"
+	QualityOffline   = "Offline"
+)
+
+// describeQuality turns a path mode and a measured round-trip time into the
+// single word a user sees. It never surfaces the mode or the number.
+func describeQuality(mode string, latencyMs int) string {
+	switch mode {
+	case "offline", "":
+		return QualityOffline
+	case "relay":
+		// A relay works; it just costs an extra hop.
+		return QualityLimited
+	case "connecting":
+		return QualityOffline
+	}
+
+	switch {
+	case latencyMs < 0:
+		// Direct path established but not yet probed: report the path we
+		// know is good rather than pretending it is offline.
+		return QualityGood
+	case latencyMs < 50:
+		return QualityExcellent
+	case latencyMs < 150:
+		return QualityGood
+	default:
+		return QualityLimited
+	}
 }
 
 // Status is the live tunnel state.
@@ -570,10 +616,11 @@ func (a *Agent) Status() Status {
 			handshake = p.LastHandshake.UTC().Format(time.RFC3339)
 		}
 		out.Peers = append(out.Peers, Peer{
-			DeviceID: p.DeviceID, DeviceName: p.DeviceName, VirtualIP: p.VirtualIP,
+			DeviceID: p.DeviceID, DeviceName: p.DeviceName, OS: p.OS, VirtualIP: p.VirtualIP,
 			Mode: string(p.Mode), Endpoint: p.Endpoint, LastHandshake: handshake,
 			BytesSent: p.BytesSent, BytesReceived: p.BytesReceived,
 			LatencyMs: p.LatencyMs,
+			Quality:   describeQuality(string(p.Mode), p.LatencyMs),
 		})
 	}
 	return out

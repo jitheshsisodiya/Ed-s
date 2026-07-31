@@ -94,6 +94,7 @@ func (s *CoordinationServer) toProtoPeer(ctx context.Context, d *domain.Device) 
 		DeviceName: d.Name,
 		PublicKey:  d.PublicKey,
 		VirtualIp:  d.VirtualIP,
+		Os:         string(d.OS),
 		Online:     d.Status == domain.DeviceStatusOnline,
 	}
 	if d.LastSeenAt != nil {

@@ -73,6 +73,10 @@ message Peer {
   NATType nat_type = 6;
   bool online = 7;
   google.protobuf.Timestamp last_seen = 8;
+  // os is the peer's platform ("windows", "macos", "linux", "android",
+  // "ios", "windows_server" or "unknown"). Frontends use it to show a
+  // recognisable icon per device; it carries no security meaning.
+  string os = 9;
 }
 
 message HeartbeatRequest {
