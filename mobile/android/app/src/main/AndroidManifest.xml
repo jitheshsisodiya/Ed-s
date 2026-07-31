@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Talking to the NexusVPN control plane REST API -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!--
+      Establishing the local WireGuard tunnel via Android's VpnService API.
+      BIND_VPN_SERVICE itself is a signature-level permission the OS grants
+      to whichever service is declared with it below (see the wireguard
+      plugin's own merged manifest, or an app-owned VpnService if one is
+      ever added here) - apps do not request it as a normal runtime
+      permission, but it must be present on that <service> element for the
+      system VPN prompt (`VpnService.prepare()`) to work at all.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Android 13+ requires an explicit runtime permission for the
+         foreground-service notification that must stay visible while the
+         VPN tunnel is up. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Scanning invite QR codes to join a network (mobile_scanner). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
+    <application
+        android:label="NexusVPN"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="false"
+        android:enableOnBackInvokedCallback="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <!-- Keep the Flutter splash while the framework starts up. -->
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
+        <!-- Declares that this app requires the Flutter engine's embedding. -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+
+        <!--
+          The wireguard_flutter plugin's Android implementation
+          (billion.group.wireguard_flutter) contributes its own VpnService
+          declaration via manifest merging when the plugin is pulled in by
+          `flutter pub get` + a native Android build, so it is intentionally
+          not duplicated here. Building the .apk with the Flutter/Gradle
+          toolchain (not available in this sandbox) is required to see the
+          merged manifest.
+        -->
+    </application>
+
+    <!-- Required to query browsers/other apps on Android 11+ if a future
+         OAuth-in-browser flow is added; harmless to declare now. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+</manifest>
