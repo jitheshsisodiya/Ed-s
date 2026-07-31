@@ -79,8 +79,8 @@ func (f *fakeCoordinationServer) RequestRelay(ctx context.Context, req *coordina
 		return f.relayResp, nil
 	}
 	return &coordinationv1.RequestRelayResponse{
-		RelayId:  "relay-1",
-		Hostname: "relay1.nexusvpn.example.com",
+		RelayId:   "relay-1",
+		Hostname:  "relay1.nexusvpn.example.com",
 		RelayPort: 51821,
 	}, nil
 }

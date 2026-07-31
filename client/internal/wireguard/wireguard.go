@@ -50,6 +50,11 @@ type InterfaceConfig struct {
 	MTU int
 	// LogVerbose enables wireguard-go's verbose internal logging.
 	LogVerbose bool
+	// Bind, if set, replaces the default UDP bind. Passing a
+	// disco.Bind lets discovery probes share this socket — and therefore
+	// this NAT mapping — with tunnel traffic, so a probe that succeeds
+	// proves the path WireGuard will actually use.
+	Bind conn.Bind
 }
 
 // PeerConfig describes a WireGuard peer to add or update.
@@ -119,7 +124,10 @@ func New(cfg InterfaceConfig) (*Device, error) {
 	}
 	logger := device.NewLogger(logLevel, fmt.Sprintf("(%s) ", actualName))
 
-	bind := conn.NewDefaultBind()
+	bind := cfg.Bind
+	if bind == nil {
+		bind = conn.NewDefaultBind()
+	}
 	dev := device.NewDevice(tunDev, bind, logger)
 
 	d := &Device{

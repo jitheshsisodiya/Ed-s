@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -38,6 +39,13 @@ type Options struct {
 	// Prober sends hole-punch probes. It must send from the same socket
 	// WireGuard uses, so probes and handshakes share a NAT mapping.
 	Prober holepunch.Prober
+	// PathProber measures round-trip time to peers and detects when a
+	// direct path becomes available to a peer currently on a relay.
+	// Optional: without it, latency is unknown and relayed peers are not
+	// upgraded.
+	PathProber PathProber
+	// SelfDeviceID is this device's ID, needed to attribute probe replies.
+	SelfDeviceID uuid.UUID
 
 	// NetworkID is the network to join.
 	NetworkID string
@@ -69,6 +77,7 @@ type Tunnel struct {
 	coord  Coordinator
 	disc   EndpointDiscoverer
 	prober holepunch.Prober
+	paths  PathProber
 
 	opts Options
 
@@ -128,6 +137,7 @@ func New(opts Options) (*Tunnel, error) {
 		coord:               opts.Coordinator,
 		disc:                opts.Discoverer,
 		prober:              opts.Prober,
+		paths:               opts.PathProber,
 		opts:                opts,
 		networkID:           opts.NetworkID,
 		preferredRegion:     opts.PreferredRegion,
@@ -480,7 +490,17 @@ func (t *Tunnel) checkPeerHealth(ctx context.Context) {
 					pr.mode = ModeDirect
 				}
 			}
+			mode := pr.mode
 			pr.mu.Unlock()
+
+			// A relayed path works, but it costs latency and relay
+			// bandwidth. Keep probing for a direct one: the peer may have
+			// moved to a friendlier network, or a port mapping may have
+			// appeared since the fallback. Without this a peer that once
+			// fell back to a relay would stay there for the whole session.
+			if mode == ModeRelay {
+				t.probeForDirectPath(ctx, pr)
+			}
 			continue
 		}
 
@@ -543,7 +563,7 @@ func (t *Tunnel) Status() Status {
 		status.InterfaceName = t.dev.Name()
 	}
 	for _, pr := range peers {
-		status.Peers = append(status.Peers, pr.snapshot(t.dev))
+		status.Peers = append(status.Peers, pr.snapshot(t.dev, t.paths))
 	}
 	return status
 }
@@ -596,4 +616,51 @@ func (d STUNDiscoverer) Discover(ctx context.Context) (DiscoveryResult, error) {
 		out.LocalEndpoint = net.UDPAddrFromAddrPort(result.LocalAddr)
 	}
 	return out, nil
+}
+
+// probeForDirectPath sends a discovery probe to a relayed peer's known
+// direct endpoints. If one answers, the path is real and the peer is
+// renegotiated onto it, dropping the relay.
+//
+// Probes go out over WireGuard's own socket (see internal/disco), so a
+// reply proves the exact path the tunnel would use — not merely that some
+// other socket could reach the peer.
+func (t *Tunnel) probeForDirectPath(ctx context.Context, pr *peer) {
+	if t.paths == nil {
+		return
+	}
+
+	// A recent probe reply means a direct path is available now.
+	if res, ok := t.paths.Result(pr.deviceID); ok && time.Since(res.At) < t.monitorInterval*2 {
+		t.logf("peer %s: direct path available (%s), upgrading from relay",
+			pr.deviceName, res.RTT.Round(time.Millisecond))
+		// Clear the throttle so the upgrade isn't deferred.
+		pr.mu.Lock()
+		pr.lastAttempt = time.Time{}
+		pr.mu.Unlock()
+		go t.negotiate(ctx, pr)
+		return
+	}
+
+	// Otherwise send a fresh probe to whatever direct endpoints we know.
+	pr.mu.Lock()
+	targets := make([]*net.UDPAddr, 0, 2)
+	if pr.remote != nil {
+		targets = append(targets, pr.remote)
+	}
+	if pr.localCandidate != nil {
+		targets = append(targets, pr.localCandidate)
+	}
+	name := pr.deviceName
+	pr.mu.Unlock()
+
+	for _, addr := range targets {
+		ap, ok := netip.AddrFromSlice(addr.IP)
+		if !ok {
+			continue
+		}
+		if err := t.paths.Ping(netip.AddrPortFrom(ap.Unmap(), uint16(addr.Port))); err != nil {
+			t.logf("peer %s: probe to %s failed: %v", name, addr, err)
+		}
+	}
 }

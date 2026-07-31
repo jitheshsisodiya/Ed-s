@@ -10,7 +10,12 @@ package tunnel
 import (
 	"context"
 	"net"
+	"net/netip"
 	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/jitheshsisodiya/Ed-s/client/internal/disco"
 
 	"github.com/jitheshsisodiya/Ed-s/client/internal/stun"
 	"github.com/jitheshsisodiya/Ed-s/client/internal/wireguard"
@@ -88,6 +93,17 @@ type Coordinator interface {
 // PeerUpdateStream is the receive side of the StreamPeerUpdates RPC.
 type PeerUpdateStream interface {
 	Recv() (*coordinationv1.PeerUpdate, error)
+}
+
+// PathProber measures round-trip time to a peer over the tunnel's own
+// socket. internal/disco.Prober implements it.
+type PathProber interface {
+	// Ping sends a probe to addr; the reply is recorded asynchronously.
+	Ping(addr netip.AddrPort) error
+	// Result returns the most recent successful probe for a peer.
+	Result(peer uuid.UUID) (disco.Result, bool)
+	// Forget drops a peer's recorded result.
+	Forget(peer uuid.UUID)
 }
 
 // EndpointDiscoverer reports this device's public (server-reflexive)

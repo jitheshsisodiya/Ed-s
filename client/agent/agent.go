@@ -16,9 +16,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/jitheshsisodiya/Ed-s/client/internal/apiclient"
 	"github.com/jitheshsisodiya/Ed-s/client/internal/config"
 	"github.com/jitheshsisodiya/Ed-s/client/internal/coordination"
+	"github.com/jitheshsisodiya/Ed-s/client/internal/disco"
 	"github.com/jitheshsisodiya/Ed-s/client/internal/tunnel"
 	"github.com/jitheshsisodiya/Ed-s/client/internal/wireguard"
 )
@@ -378,10 +381,17 @@ func (a *Agent) Connect(networkID string, opts ConnectOptions) error {
 		ifaceName = "nexus0"
 	}
 
+	// Discovery probes share WireGuard's socket, so a probe that gets
+	// through proves the path the tunnel will actually use, and opens the
+	// pinhole it needs. Probing from a separate socket would open a mapping
+	// for the wrong socket entirely.
+	discoBind := disco.NewBind()
+
 	dev, err := wireguard.New(wireguard.InterfaceConfig{
 		Name:             ifaceName,
 		PrivateKeyBase64: cfg.Keypair.PrivateKey,
 		ListenPort:       opts.ListenPort,
+		Bind:             discoBind,
 	})
 	if err != nil {
 		return fmt.Errorf("create tunnel interface: %w", err)
@@ -420,9 +430,15 @@ func (a *Agent) Connect(networkID string, opts ConnectOptions) error {
 		stunServers = DefaultSTUNServers
 	}
 
+	// The prober answers inbound probes immediately (which is how the other
+	// side discovers this path) and records round-trip times for status.
+	// Its own device ID is filled in after registration below.
+	prober := disco.NewProber(discoBind, uuid.Nil)
+
 	tun, err := tunnel.New(tunnel.Options{
 		Device:      dev,
 		Coordinator: coordAdapter{coord},
+		PathProber:  prober,
 		Discoverer: tunnel.STUNDiscoverer{
 			Conn:            probeConn,
 			PrimaryServer:   stunServers[0],
@@ -451,6 +467,12 @@ func (a *Agent) Connect(networkID string, opts ConnectOptions) error {
 	resp, err := tun.Register(ctx)
 	if err != nil {
 		return abort(err)
+	}
+
+	// Probes are attributed by device ID, which only exists after
+	// registration.
+	if id, err := uuid.Parse(resp.GetDeviceId()); err == nil {
+		prober.SetSelfID(id)
 	}
 
 	virtualIP := net.ParseIP(resp.GetAssignedVirtualIp())

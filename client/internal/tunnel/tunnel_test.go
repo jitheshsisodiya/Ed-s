@@ -142,9 +142,9 @@ type fakeCoordinator struct {
 	registerErr  error
 	registerReq  *coordinationv1.RegisterDeviceRequest
 
-	heartbeats []*coordinationv1.HeartbeatRequest
+	heartbeats  []*coordinationv1.HeartbeatRequest
 	heartbeatCh chan struct{}
-	nextBeat   int32
+	nextBeat    int32
 
 	iceResp *coordinationv1.ICEExchangeResponse
 	iceErr  error

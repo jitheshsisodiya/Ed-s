@@ -48,8 +48,9 @@ type peer struct {
 	lastAttempt time.Time
 }
 
-// snapshot builds a PeerStatus, merging live WireGuard counters.
-func (p *peer) snapshot(dev WireGuardDevice) PeerStatus {
+// snapshot builds a PeerStatus, merging live WireGuard counters and the
+// most recent measured round-trip time.
+func (p *peer) snapshot(dev WireGuardDevice, paths PathProber) PeerStatus {
 	p.mu.Lock()
 	status := PeerStatus{
 		DeviceID:   p.deviceID.String(),
@@ -63,6 +64,13 @@ func (p *peer) snapshot(dev WireGuardDevice) PeerStatus {
 		status.Endpoint = p.remote.String()
 	}
 	p.mu.Unlock()
+
+	// -1 means "not measured yet"; a real probe overwrites it.
+	if paths != nil {
+		if res, ok := paths.Result(p.deviceID); ok {
+			status.LatencyMs = int(res.RTT.Milliseconds())
+		}
+	}
 
 	if dev == nil {
 		return status

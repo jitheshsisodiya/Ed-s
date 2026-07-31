@@ -16,11 +16,11 @@ import (
 // can optionally ignore CHANGE-REQUEST attributes to simulate a NAT/
 // firewall that blocks unsolicited traffic from an unexpected source.
 type fakeSTUNServer struct {
-	conn                  net.PacketConn
-	mapped                netip.AddrPort
-	supportChangeRequest  bool
-	ignoreAllRequests     bool
-	closeCh               chan struct{}
+	conn                 net.PacketConn
+	mapped               netip.AddrPort
+	supportChangeRequest bool
+	ignoreAllRequests    bool
+	closeCh              chan struct{}
 }
 
 func newFakeSTUNServer(t *testing.T, mapped netip.AddrPort, supportChangeRequest bool) *fakeSTUNServer {

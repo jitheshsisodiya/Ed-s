@@ -75,19 +75,19 @@ type Member struct {
 
 // Device mirrors the `Device` schema.
 type Device struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	OS             string `json:"os"`
-	OSVersion      string `json:"osVersion"`
-	PublicKey      string `json:"publicKey"`
-	VirtualIP      string `json:"virtualIp"`
-	LastPublicIP   string `json:"lastPublicIp"`
-	Status         string `json:"status"`
-	NATType        string `json:"natType"`
-	LatencyMs      int    `json:"latencyMs"`
-	BytesSent      int64  `json:"bytesSent"`
-	BytesReceived  int64  `json:"bytesReceived"`
-	LastSeenAt     string `json:"lastSeenAt"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	OS            string `json:"os"`
+	OSVersion     string `json:"osVersion"`
+	PublicKey     string `json:"publicKey"`
+	VirtualIP     string `json:"virtualIp"`
+	LastPublicIP  string `json:"lastPublicIp"`
+	Status        string `json:"status"`
+	NATType       string `json:"natType"`
+	LatencyMs     int    `json:"latencyMs"`
+	BytesSent     int64  `json:"bytesSent"`
+	BytesReceived int64  `json:"bytesReceived"`
+	LastSeenAt    string `json:"lastSeenAt"`
 }
 
 // Client is a REST client for the control plane API. It is safe for
