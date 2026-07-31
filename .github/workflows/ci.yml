@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.25"
           cache-dependency-path: backend/go.sum
       - run: go vet ./...
       - run: go build ./...
@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.25"
           cache-dependency-path: relay/go.sum
       - run: go vet ./...
       - run: go build ./...
@@ -61,7 +61,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.25"
           cache-dependency-path: client/go.sum
       - run: go vet ./...
       - name: build (native only, for tests)
@@ -75,26 +75,45 @@ jobs:
         run: go build -o /tmp/nexusvpnctl-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/nexusvpnctl
 
   desktop:
-    name: desktop (go build + frontend build)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: desktop
+    name: desktop (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  name: linux,   platform: linux/amd64,   tags: "-tags webkit2_41" }
+          - { os: windows-latest, name: windows, platform: windows/amd64, tags: "" }
+          - { os: macos-latest,   name: macos,   platform: darwin/universal, tags: "" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
-      - run: go build ./...
+          go-version: "1.25"
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: npm
-          cache-dependency-path: desktop/frontend/package-lock.json
-      - working-directory: desktop/frontend
+
+      # Wails needs GTK/WebKit headers to compile the Linux WebView. Ubuntu
+      # 24.04 ships webkit2gtk-4.1, which the webkit2_41 build tag selects.
+      - name: install linux webview dependencies
+        if: matrix.name == 'linux'
         run: |
-          npm ci
-          npm run build
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: install wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+
+      - name: build
+        working-directory: desktop
+        shell: bash
+        run: wails build -platform ${{ matrix.platform }} ${{ matrix.tags }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexusvpn-desktop-${{ matrix.name }}
+          path: desktop/build/bin/*
+          if-no-files-found: error
 
   admin:
     name: admin (lint, typecheck, build)

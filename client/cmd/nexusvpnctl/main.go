@@ -12,7 +12,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/jitheshsisodiya/Ed-s/client/internal/config"
+	"github.com/jitheshsisodiya/Ed-s/client/agent"
 )
 
 // Version is the client version reported to the control plane. Release
@@ -35,6 +35,7 @@ Commands:
   down               Stop a running tunnel
   status             Show tunnel and peer status
   device rotate-key  Generate a new device keypair
+  device rename      Rename this device
   version            Print the client version
 
 Run 'nexusvpnctl <command> -h' for command-specific flags.
@@ -64,26 +65,26 @@ func run(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	store, err := config.NewStore()
+	ag, err := agent.New()
 	if err != nil {
 		return fmt.Errorf("open config: %w", err)
 	}
 
 	switch args[0] {
 	case "login":
-		return cmdLogin(ctx, store, args[1:])
+		return cmdLogin(ctx, ag, args[1:])
 	case "logout":
-		return cmdLogout(ctx, store, args[1:])
+		return cmdLogout(ctx, ag, args[1:])
 	case "network":
-		return cmdNetwork(ctx, store, args[1:])
+		return cmdNetwork(ctx, ag, args[1:])
 	case "device":
-		return cmdDevice(ctx, store, args[1:])
+		return cmdDevice(ag, args[1:])
 	case "up":
-		return cmdUp(ctx, store, args[1:])
+		return cmdUp(ctx, ag, args[1:])
 	case "down":
-		return cmdDown(store, args[1:])
+		return cmdDown(args[1:])
 	case "status":
-		return cmdStatus(ctx, store, args[1:])
+		return cmdStatus(ctx, ag, args[1:])
 	case "version":
 		fmt.Printf("nexusvpnctl %s\n", Version)
 		return nil

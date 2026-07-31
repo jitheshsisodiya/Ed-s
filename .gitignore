@@ -46,3 +46,7 @@ frontend/dist
 # Coverage
 coverage.out
 coverage.html
+
+# Wails build output
+desktop/build/bin/
+desktop/desktop

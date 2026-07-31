@@ -1,0 +1,6 @@
+build/bin
+node_modules
+frontend/dist/*
+# go:embed all:frontend/dist requires the directory to exist for `go build`
+# to work on a fresh clone, so keep the placeholder tracked.
+!frontend/dist/.gitkeep
