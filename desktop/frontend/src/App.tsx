@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 
 import {
   Connect,
+  CopyToClipboard,
   CreateNetwork,
   Disconnect,
   GetAppInfo,
@@ -249,6 +250,7 @@ function NetworksScreen({
   const [networks, setNetworks] = useState<agent.Network[]>([]);
   const [inviteCode, setInviteCode] = useState('');
   const [newName, setNewName] = useState('');
+  const [copied, setCopied] = useState('');
 
   const reload = useCallback(async () => {
     setNetworks(await ListNetworks());
@@ -258,88 +260,83 @@ function NetworksScreen({
     reload().catch(() => undefined);
   }, [reload]);
 
-  if (status) {
-    return (
-      <section className="card">
-        <div className="row between">
-          <div>
-            <h1>{status.networkName || status.networkId}</h1>
-            <p className="muted">
-              {status.virtualIp} on {status.cidr} · {status.interfaceName} · NAT:{' '}
-              {status.natType || 'unknown'}
-            </p>
-          </div>
-          <button
-            className="danger"
-            disabled={busy}
-            onClick={() =>
-              run(async () => {
-                await Disconnect();
-                onStatus(null);
-              })
-            }
-          >
-            Disconnect
-          </button>
-        </div>
-
-        <h2>Peers</h2>
-        {status.peers?.length ? (
-          <table>
-            <thead>
-              <tr>
-                <th>Device</th>
-                <th>Virtual IP</th>
-                <th>Path</th>
-                <th>Sent</th>
-                <th>Received</th>
-              </tr>
-            </thead>
-            <tbody>
-              {status.peers.map((p) => (
-                <tr key={p.deviceId}>
-                  <td>{p.deviceName || p.deviceId.slice(0, 8)}</td>
-                  <td>{p.virtualIp}</td>
-                  <td>
-                    <span className={`pill ${p.mode}`}>{p.mode}</span>
-                  </td>
-                  <td>{formatBytes(p.bytesSent)}</td>
-                  <td>{formatBytes(p.bytesReceived)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p className="muted">No other devices on this network yet.</p>
-        )}
-
-        <h2>Activity</h2>
-        <pre className="log">{logs.slice(-40).join('\n') || 'No activity yet.'}</pre>
-      </section>
-    );
-  }
+  // Copying an address is the action people reach for constantly: it goes
+  // straight into a game browser, an RDP client or \\host file share.
+  const copy = (text: string) => {
+    void CopyToClipboard(text)
+      .then(() => {
+        setCopied(text);
+        window.setTimeout(() => setCopied(''), 1500);
+      })
+      .catch(() => undefined);
+  };
 
   return (
     <section className="card">
-      <h1>Networks</h1>
+      {/* Your own address, front and centre: it is what you give people. */}
+      <div className="row between selfbar">
+        <div>
+          <span className="muted small">Your address</span>
+          <div className="selfip">
+            {status ? (
+              <button className="linky" onClick={() => copy(status.virtualIp)} title="Copy">
+                {status.virtualIp}
+              </button>
+            ) : (
+              <span className="muted">not connected</span>
+            )}
+          </div>
+        </div>
+        {status && (
+          <div className="right muted small">
+            {status.networkName || status.networkId}
+            <br />
+            {status.interfaceName} · NAT: {status.natType || 'unknown'}
+          </div>
+        )}
+      </div>
 
+      <h2>Networks</h2>
       {networks.length === 0 ? (
         <p className="muted">No networks yet. Create one, or join with an invite code.</p>
       ) : (
         <ul className="list">
-          {networks.map((n) => (
-            <li key={n.id}>
-              <div>
-                <strong>{n.name}</strong>
-                <p className="muted small">
-                  {n.cidr} · {n.role} · {n.deviceCount} device{n.deviceCount === 1 ? '' : 's'}
-                </p>
-              </div>
-              <button className="primary" disabled={busy} onClick={() => run(() => Connect(n.id))}>
-                Connect
-              </button>
-            </li>
-          ))}
+          {networks.map((n) => {
+            const active = status?.networkId === n.id;
+            return (
+              <li key={n.id} className={active ? 'active' : ''}>
+                <div>
+                  <strong>{n.name}</strong>
+                  <p className="muted small">
+                    {n.cidr} · {n.role} · {n.deviceCount} device{n.deviceCount === 1 ? '' : 's'}
+                  </p>
+                </div>
+                {active ? (
+                  <button
+                    className="danger"
+                    disabled={busy}
+                    onClick={() =>
+                      run(async () => {
+                        await Disconnect();
+                        onStatus(null);
+                      })
+                    }
+                  >
+                    Disconnect
+                  </button>
+                ) : (
+                  <button
+                    className="primary"
+                    disabled={busy || status !== null}
+                    title={status ? 'Disconnect first' : undefined}
+                    onClick={() => run(() => Connect(n.id))}
+                  >
+                    Connect
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -388,6 +385,53 @@ function NetworksScreen({
           </button>
         </form>
       </div>
+
+      {status && (
+        <>
+          <h2>Computers</h2>
+          {status.peers?.length ? (
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Address</th>
+                  <th>Ping</th>
+                  <th>Path</th>
+                  <th>Sent</th>
+                  <th>Received</th>
+                </tr>
+              </thead>
+              <tbody>
+                {status.peers.map((p) => (
+                  <tr key={p.deviceId}>
+                    <td>{p.deviceName || p.deviceId.slice(0, 8)}</td>
+                    <td>
+                      <button className="linky" onClick={() => copy(p.virtualIp)} title="Copy address">
+                        {p.virtualIp}
+                      </button>
+                    </td>
+                    <td>{p.latencyMs >= 0 ? `${p.latencyMs} ms` : '—'}</td>
+                    <td>
+                      <span className={`pill ${p.mode}`}>{p.mode}</span>
+                    </td>
+                    <td>{formatBytes(p.bytesSent)}</td>
+                    <td>{formatBytes(p.bytesReceived)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="muted">No other computers on this network yet.</p>
+          )}
+
+          {copied && <p className="copied small">Copied {copied}</p>}
+
+          <details className="activity">
+            <summary className="muted small">Activity</summary>
+            <pre className="log">{logs.slice(-40).join('\n') || 'No activity yet.'}</pre>
+          </details>
+        </>
+      )}
     </section>
   );
 }

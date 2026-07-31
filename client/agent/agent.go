@@ -67,6 +67,8 @@ type Peer struct {
 	LastHandshake string `json:"lastHandshake"`
 	BytesSent     uint64 `json:"bytesSent"`
 	BytesReceived uint64 `json:"bytesReceived"`
+	// LatencyMs is the measured round-trip time, or -1 if not yet probed.
+	LatencyMs int `json:"latencyMs"`
 }
 
 // Status is the live tunnel state.
@@ -571,6 +573,7 @@ func (a *Agent) Status() Status {
 			DeviceID: p.DeviceID, DeviceName: p.DeviceName, VirtualIP: p.VirtualIP,
 			Mode: string(p.Mode), Endpoint: p.Endpoint, LastHandshake: handshake,
 			BytesSent: p.BytesSent, BytesReceived: p.BytesReceived,
+			LatencyMs: p.LatencyMs,
 		})
 	}
 	return out

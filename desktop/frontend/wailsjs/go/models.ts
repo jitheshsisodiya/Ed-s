@@ -37,6 +37,7 @@ export namespace agent {
 	    lastHandshake: string;
 	    bytesSent: number;
 	    bytesReceived: number;
+	    latencyMs: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Peer(source);
@@ -52,6 +53,7 @@ export namespace agent {
 	        this.lastHandshake = source["lastHandshake"];
 	        this.bytesSent = source["bytesSent"];
 	        this.bytesReceived = source["bytesReceived"];
+	        this.latencyMs = source["latencyMs"];
 	    }
 	}
 	export class Session {

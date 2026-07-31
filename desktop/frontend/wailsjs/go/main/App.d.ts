@@ -5,6 +5,8 @@ import {main} from '../models';
 
 export function Connect(arg1:string):Promise<void>;
 
+export function CopyToClipboard(arg1:string):Promise<void>;
+
 export function CreateNetwork(arg1:string,arg2:string,arg3:string):Promise<agent.Network>;
 
 export function Disconnect():Promise<void>;

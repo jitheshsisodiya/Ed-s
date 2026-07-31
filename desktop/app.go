@@ -168,6 +168,13 @@ func (a *App) GetStatus() agent.Status {
 	return a.agent.Status()
 }
 
+// CopyToClipboard puts text on the system clipboard. The UI uses it for the
+// one action people reach for constantly: copying a peer's virtual IP to
+// paste into a game server browser, an RDP client or a file share.
+func (a *App) CopyToClipboard(text string) error {
+	return wailsruntime.ClipboardSetText(a.ctx, text)
+}
+
 // RotateDeviceKey generates a fresh device keypair and returns its public key.
 func (a *App) RotateDeviceKey() (string, error) {
 	if err := a.ready(); err != nil {

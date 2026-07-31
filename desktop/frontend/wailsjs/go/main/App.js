@@ -6,6 +6,10 @@ export function Connect(arg1) {
   return window['go']['main']['App']['Connect'](arg1);
 }
 
+export function CopyToClipboard(arg1) {
+  return window['go']['main']['App']['CopyToClipboard'](arg1);
+}
+
 export function CreateNetwork(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreateNetwork'](arg1, arg2, arg3);
 }
