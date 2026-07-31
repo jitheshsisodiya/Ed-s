@@ -164,7 +164,18 @@ func TestWrongMethodIsNotRouted(t *testing.T) {
 }
 
 func TestCORSPreflight(t *testing.T) {
-	r, _ := newMinimalRouter(t)
+	// An explicit allowlist is the realistic deployment shape: it is the
+	// only configuration that grants credentials (see cors_test.go).
+	tokens := newTestTokens()
+	r := NewRouter(RouterConfig{
+		Auth:        NewAuthHandler(nil, zap.NewNop(), false),
+		Networks:    NewNetworkHandler(nil, nil),
+		Devices:     NewDeviceHandler(nil),
+		Logs:        NewLogsHandler(nil, nil),
+		Tokens:      tokens,
+		Logger:      zap.NewNop(),
+		CORSOrigins: []string{"http://localhost:3000"},
+	})
 
 	req := httptest.NewRequest(http.MethodOptions, "/api/v1/networks", nil)
 	req.Header.Set("Origin", "http://localhost:3000")

@@ -52,6 +52,13 @@ type Config struct {
 	LogLevel    string
 	CORSOrigins []string
 
+	// DevExposeResetToken returns the raw password-reset token in the
+	// forgot-password response, for local development and integration tests
+	// where no mail transport is configured. It requires deliberate opt-in
+	// and is rejected outright in production: anyone able to submit an email
+	// address would otherwise be able to take over that account.
+	DevExposeResetToken bool
+
 	// DNS servers handed to newly created networks when none supplied.
 	DefaultDNSServers []string
 }
@@ -128,9 +135,10 @@ func Load() (*Config, error) {
 		PasswordResetTTL: getenvDuration("PASSWORD_RESET_TTL", 1*time.Hour),
 		PresenceTTL:      getenvDuration("PRESENCE_TTL", 45*time.Second),
 
-		Environment: env,
-		LogLevel:    getenv("LOG_LEVEL", "info"),
-		CORSOrigins: getenvList("CORS_ORIGINS", []string{"*"}),
+		Environment:         env,
+		LogLevel:            getenv("LOG_LEVEL", "info"),
+		CORSOrigins:         getenvList("CORS_ORIGINS", []string{"*"}),
+		DevExposeResetToken: getenv("DEV_EXPOSE_RESET_TOKEN", "") == "true",
 
 		DefaultDNSServers: getenvList("DEFAULT_DNS_SERVERS", []string{"1.1.1.1", "8.8.8.8"}),
 	}
@@ -140,6 +148,9 @@ func Load() (*Config, error) {
 			cfg.JWTRefreshSecret == "dev-refresh-secret-change-me-please-32" ||
 			cfg.RelaySessionSecret == "dev-relay-secret-change-me-please-32b" {
 			return nil, fmt.Errorf("config: refusing to start in production with default secrets; set JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, RELAY_SESSION_SECRET")
+		}
+		if cfg.DevExposeResetToken {
+			return nil, fmt.Errorf("config: DEV_EXPOSE_RESET_TOKEN must not be enabled in production; it would let anyone reset any account by email address alone")
 		}
 	}
 

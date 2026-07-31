@@ -141,7 +141,7 @@ func run() error {
 	})
 
 	router := httptransport.NewRouter(httptransport.RouterConfig{
-		Auth:        httptransport.NewAuthHandler(authService, logger, cfg.Environment != "production"),
+		Auth:        httptransport.NewAuthHandler(authService, logger, cfg.DevExposeResetToken),
 		Networks:    httptransport.NewNetworkHandler(networkService, deviceService),
 		Devices:     httptransport.NewDeviceHandler(deviceService),
 		Logs:        httptransport.NewLogsHandler(logsService, dashboardService),

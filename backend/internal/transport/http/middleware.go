@@ -83,12 +83,18 @@ func Authenticate(tokens TokenParser) func(http.Handler) http.Handler {
 
 // CORS applies permissive-but-configurable cross-origin headers so the admin
 // panel (served from a different origin in development) can call the API.
+// Credentials are only ever granted to an explicitly allowlisted origin.
+// Echoing an arbitrary origin back alongside Access-Control-Allow-Credentials
+// would let any website make credentialed cross-origin calls — the wildcard
+// case therefore replies with a literal "*" and no credentials, which
+// browsers refuse to use for credentialed requests.
 func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 	allowAll := false
 	allowed := make(map[string]struct{}, len(allowedOrigins))
 	for _, o := range allowedOrigins {
 		if o == "*" {
 			allowAll = true
+			continue
 		}
 		allowed[o] = struct{}{}
 	}
@@ -97,11 +103,15 @@ func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
 			if origin != "" {
-				_, ok := allowed[origin]
-				if allowAll || ok {
+				if _, explicit := allowed[origin]; explicit {
 					w.Header().Set("Access-Control-Allow-Origin", origin)
 					w.Header().Set("Vary", "Origin")
 					w.Header().Set("Access-Control-Allow-Credentials", "true")
+					w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+					w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+					w.Header().Set("Access-Control-Max-Age", "600")
+				} else if allowAll {
+					w.Header().Set("Access-Control-Allow-Origin", "*")
 					w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 					w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 					w.Header().Set("Access-Control-Max-Age", "600")
