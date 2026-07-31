@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import QRCode from 'qrcode';
-import { useAuth } from '@/lib/auth-context';
+import { useAuth } from '@/lib/auth-context-value';
 import { api, ApiError } from '@/lib/api';
-import { useToast } from '@/components/Toast';
+import { useToast } from '@/components/toast-context';
 import { Card, ErrorBanner } from '@/components/Feedback';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';

@@ -24,6 +24,7 @@ FROM nginx:1.27-alpine AS runtime
 RUN rm -rf /usr/share/nginx/html/*
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY security-headers.conf /etc/nginx/security-headers.conf
 
 # The backend control-plane upstream nginx proxies /api/ to. Point this at
 # the backend Service/host reachable from this container, e.g.

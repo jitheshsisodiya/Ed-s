@@ -15,17 +15,40 @@ spec:
       containers:
         - name: admin
           image: ghcr.io/jitheshsisodiya/ed-s-admin:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            # uid of the "nginx" user in the official image.
+            runAsUser: 101
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           env:
-            - name: API_PROXY_TARGET
+            - name: API_UPSTREAM
               value: "http://backend.nexusvpn.svc.cluster.local:8080"
           ports:
-            - { name: http, containerPort: 80 }
+            - { name: http, containerPort: 8080 }
           readinessProbe:
             httpGet: { path: /, port: http }
             initialDelaySeconds: 5
           resources:
             requests: { cpu: "50m", memory: "64Mi" }
             limits: { cpu: "250m", memory: "128Mi" }
+          # nginx needs writable scratch space even with a read-only rootfs.
+          volumeMounts:
+            - { name: nginx-cache, mountPath: /var/cache/nginx }
+            - { name: nginx-run, mountPath: /var/run }
+            # envsubst renders the config template here on container start.
+            - { name: nginx-conf, mountPath: /etc/nginx/conf.d }
+      volumes:
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: nginx-conf
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

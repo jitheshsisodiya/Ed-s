@@ -4,7 +4,7 @@ import { AuthLayout } from '@/components/AuthLayout';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { ErrorBanner } from '@/components/Feedback';
-import { useAuth } from '@/lib/auth-context';
+import { useAuth } from '@/lib/auth-context-value';
 import { ApiError } from '@/lib/api';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

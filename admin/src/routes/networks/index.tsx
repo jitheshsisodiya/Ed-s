@@ -6,7 +6,7 @@ import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { Modal } from '@/components/Modal';
 import { RoleBadge } from '@/components/RoleBadge';
-import { useToast } from '@/components/Toast';
+import { useToast } from '@/components/toast-context';
 import { ApiError } from '@/lib/api';
 
 const CIDR_RE = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/;

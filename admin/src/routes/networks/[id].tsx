@@ -12,7 +12,7 @@ import {
 } from '@/hooks/useNetworks';
 import { useRemoveDevice } from '@/hooks/useDevices';
 import { api, ApiError } from '@/lib/api';
-import { useToast } from '@/components/Toast';
+import { useToast } from '@/components/toast-context';
 import { Card, ErrorBanner, Spinner } from '@/components/Feedback';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';

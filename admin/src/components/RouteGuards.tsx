@@ -1,5 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { useAuth } from '@/lib/auth-context';
+import { useAuth } from '@/lib/auth-context-value';
 import { Spinner } from './Feedback';
 
 function FullPageSpinner() {

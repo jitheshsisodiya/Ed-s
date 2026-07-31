@@ -4,7 +4,7 @@ import { AuthLayout } from '@/components/AuthLayout';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { ErrorBanner } from '@/components/Feedback';
-import { useToast } from '@/components/Toast';
+import { useToast } from '@/components/toast-context';
 import { api, ApiError } from '@/lib/api';
 
 export default function ResetPasswordPage() {

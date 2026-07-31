@@ -1,21 +1,11 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+
 import { api, ApiError } from './api';
+import { AuthContext, type AuthContextValue, type SessionUser } from './auth-context-value';
+import type { LoginRequest, RegisterRequest } from './types';
 import { clearStoredTokens, getStoredTokens, setStoredTokens } from './token-storage';
 import { onSessionExpired } from './auth-events';
 import { decodeJwtPayload } from './jwt';
-import type { LoginRequest, RegisterRequest, TokenPair, User } from './types';
-
-interface SessionUser extends Pick<User, 'id' | 'email' | 'displayName' | 'mfaEnabled'> {
-  status: User['status'];
-}
 
 function userFromAccessToken(accessToken: string): SessionUser | null {
   const claims = decodeJwtPayload(accessToken);
@@ -30,19 +20,6 @@ function userFromAccessToken(accessToken: string): SessionUser | null {
     status: 'active',
   };
 }
-
-interface AuthContextValue {
-  user: SessionUser | null;
-  isAuthenticated: boolean;
-  isBootstrapping: boolean;
-  login: (data: LoginRequest) => Promise<TokenPair>;
-  register: (data: RegisterRequest) => Promise<User>;
-  logout: () => Promise<void>;
-  /** Merge locally-known changes into the cached session user (e.g. after MFA enable). */
-  patchUser: (patch: Partial<SessionUser>) => void;
-}
-
-const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -114,11 +91,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
-
-export function useAuth(): AuthContextValue {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within an AuthProvider');
-  return ctx;
-}
-
-export type { SessionUser };

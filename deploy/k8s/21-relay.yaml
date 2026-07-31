@@ -31,6 +31,17 @@ spec:
       containers:
         - name: relay
           image: ghcr.io/jitheshsisodiya/ed-s-relay:latest
+          # hostNetwork gives each node a stable, routable UDP endpoint; the
+          # relay process itself still runs unprivileged with no capabilities.
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 65532
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           envFrom:
             - secretRef: { name: nexusvpn-relay-secrets }
           env:

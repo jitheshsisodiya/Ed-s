@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/lib/auth-context';
+import { useAuth } from '@/lib/auth-context-value';
 import { useTheme } from '@/hooks/useTheme';
 
 export function Topbar({ onMenuClick, title }: { onMenuClick?: () => void; title: string }) {
