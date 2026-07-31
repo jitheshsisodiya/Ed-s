@@ -15,6 +15,9 @@ type RouterConfig struct {
 	Tokens      TokenParser
 	Logger      *zap.Logger
 	CORSOrigins []string
+	// Relay, when non-nil, mounts the internal relay-fleet endpoints
+	// (register/heartbeat), authenticated by the shared relay secret.
+	Relay *RelayHandler
 	// WSHandler, when non-nil, is mounted at /api/v1/ws for live presence and
 	// peer updates. It performs its own authentication because browsers can't
 	// set an Authorization header on a WebSocket handshake.
@@ -75,6 +78,12 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	// --- WebSocket signaling ---
 	if cfg.WSHandler != nil {
 		mux.Handle(p+"/ws", cfg.WSHandler)
+	}
+
+	// --- Internal relay-fleet endpoints (shared-secret auth, not JWT) ---
+	if cfg.Relay != nil {
+		mux.HandleFunc("POST /internal/relay/register", cfg.Relay.register)
+		mux.HandleFunc("POST /internal/relay/heartbeat", cfg.Relay.heartbeat)
 	}
 
 	// --- Health ---

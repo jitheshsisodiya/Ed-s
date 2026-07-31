@@ -20,9 +20,9 @@ type DashboardStats struct {
 // DashboardService computes aggregate stats across Postgres and the Redis
 // presence store.
 type DashboardService struct {
-	devices     domain.DeviceRepository
-	connLogs    domain.ConnectionLogRepository
-	presence    domain.PresenceStore
+	devices      domain.DeviceRepository
+	connLogs     domain.ConnectionLogRepository
+	presence     domain.PresenceStore
 	activeWindow time.Duration
 }
 

@@ -41,12 +41,12 @@ type Authenticator interface {
 
 // Config wires the Hub's dependencies.
 type Config struct {
-	Bus           domain.PeerEventBus
-	Presence      domain.PresenceStore
-	Members       NetworkLister
-	Devices       DeviceLookup
-	Auth          Authenticator
-	Logger        *zap.Logger
+	Bus      domain.PeerEventBus
+	Presence domain.PresenceStore
+	Members  NetworkLister
+	Devices  DeviceLookup
+	Auth     Authenticator
+	Logger   *zap.Logger
 	// AllowedOrigins is passed to the websocket accept options. Empty means
 	// same-origin only; include the admin panel's origin in development.
 	AllowedOrigins []string

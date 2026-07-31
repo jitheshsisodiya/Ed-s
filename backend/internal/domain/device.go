@@ -42,24 +42,24 @@ func NormalizeDeviceOS(s string) DeviceOS {
 
 // Device is a registered endpoint (client agent) belonging to a user on a network.
 type Device struct {
-	ID               uuid.UUID
-	UserID           uuid.UUID
-	NetworkID        uuid.UUID
-	Name             string
-	OS               DeviceOS
-	OSVersion        string
-	PublicKey        string
-	VirtualIP        string
-	LastPublicIP     *string
-	LastPrivateIP    *string
-	NATType          *string
-	Status           DeviceStatus
-	LastSeenAt       *time.Time
-	LastHandshakeAt  *time.Time
-	BytesSent        int64
-	BytesReceived    int64
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID              uuid.UUID
+	UserID          uuid.UUID
+	NetworkID       uuid.UUID
+	Name            string
+	OS              DeviceOS
+	OSVersion       string
+	PublicKey       string
+	VirtualIP       string
+	LastPublicIP    *string
+	LastPrivateIP   *string
+	NATType         *string
+	Status          DeviceStatus
+	LastSeenAt      *time.Time
+	LastHandshakeAt *time.Time
+	BytesSent       int64
+	BytesReceived   int64
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // DeviceRepository persists Device aggregates.
@@ -104,6 +104,10 @@ type RelayServer struct {
 // RelayServerRepository persists RelayServer rows.
 type RelayServerRepository interface {
 	Create(ctx context.Context, r *RelayServer) error
+	// Upsert registers a relay node idempotently, keyed on its public
+	// (hostname, relay_port) endpoint, so a restarting relay reclaims its
+	// existing row instead of creating a duplicate.
+	Upsert(ctx context.Context, r *RelayServer) error
 	GetByID(ctx context.Context, id uuid.UUID) (*RelayServer, error)
 	ListActive(ctx context.Context) ([]*RelayServer, error)
 	PickLeastLoaded(ctx context.Context, preferredRegion string) (*RelayServer, error)
@@ -151,23 +155,23 @@ type ConnectionLogRepository interface {
 type AuditAction string
 
 const (
-	AuditUserRegister          AuditAction = "user.register"
-	AuditUserLogin             AuditAction = "user.login"
-	AuditUserLoginFailed       AuditAction = "user.login_failed"
-	AuditUserPasswordReset     AuditAction = "user.password_reset"
-	AuditUserMFAEnabled        AuditAction = "user.mfa_enabled"
-	AuditUserMFADisabled       AuditAction = "user.mfa_disabled"
-	AuditNetworkCreate         AuditAction = "network.create"
-	AuditNetworkUpdate         AuditAction = "network.update"
-	AuditNetworkDelete         AuditAction = "network.delete"
-	AuditNetworkInviteCreated  AuditAction = "network.invite_created"
-	AuditNetworkInviteRotated  AuditAction = "network.invite_rotated"
-	AuditNetworkMemberJoined   AuditAction = "network.member_joined"
-	AuditNetworkMemberRemoved  AuditAction = "network.member_removed"
+	AuditUserRegister         AuditAction = "user.register"
+	AuditUserLogin            AuditAction = "user.login"
+	AuditUserLoginFailed      AuditAction = "user.login_failed"
+	AuditUserPasswordReset    AuditAction = "user.password_reset"
+	AuditUserMFAEnabled       AuditAction = "user.mfa_enabled"
+	AuditUserMFADisabled      AuditAction = "user.mfa_disabled"
+	AuditNetworkCreate        AuditAction = "network.create"
+	AuditNetworkUpdate        AuditAction = "network.update"
+	AuditNetworkDelete        AuditAction = "network.delete"
+	AuditNetworkInviteCreated AuditAction = "network.invite_created"
+	AuditNetworkInviteRotated AuditAction = "network.invite_rotated"
+	AuditNetworkMemberJoined  AuditAction = "network.member_joined"
+	AuditNetworkMemberRemoved AuditAction = "network.member_removed"
 	AuditNetworkMemberRoleChg AuditAction = "network.member_role_changed"
-	AuditDeviceRegistered      AuditAction = "device.registered"
-	AuditDeviceRemoved         AuditAction = "device.removed"
-	AuditDeviceKeyRotated      AuditAction = "device.key_rotated"
+	AuditDeviceRegistered     AuditAction = "device.registered"
+	AuditDeviceRemoved        AuditAction = "device.removed"
+	AuditDeviceKeyRotated     AuditAction = "device.key_rotated"
 )
 
 // AuditLog is an immutable record of a mutating action.

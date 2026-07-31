@@ -34,15 +34,15 @@ type RelayAllocation struct {
 // CoordinationService: device registration, heartbeats, peer discovery,
 // ICE candidate rendezvous and relay allocation.
 type CoordinationService struct {
-	devices  domain.DeviceRepository
-	networks domain.NetworkRepository
-	members  domain.NetworkMemberRepository
-	relays   domain.RelayServerRepository
-	presence domain.PresenceStore
-	bus      domain.PeerEventBus
-	ice      domain.ICEStore
-	relayTok RelaySessionIssuer
-	audit    *AuditRecorder
+	devices     domain.DeviceRepository
+	networks    domain.NetworkRepository
+	members     domain.NetworkMemberRepository
+	relays      domain.RelayServerRepository
+	presence    domain.PresenceStore
+	bus         domain.PeerEventBus
+	ice         domain.ICEStore
+	relayTok    RelaySessionIssuer
+	audit       *AuditRecorder
 	presenceTTL time.Duration
 }
 

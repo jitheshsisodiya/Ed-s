@@ -64,15 +64,15 @@ func (s *DeviceService) Register(ctx context.Context, userID, networkID uuid.UUI
 	}
 
 	d := &domain.Device{
-		ID:         uuid.New(),
-		UserID:     userID,
-		NetworkID:  networkID,
-		Name:       name,
-		OS:         domain.NormalizeDeviceOS(os),
-		OSVersion:  osVersion,
-		PublicKey:  publicKey,
-		VirtualIP:  ip,
-		Status:     domain.DeviceStatusUnknown,
+		ID:        uuid.New(),
+		UserID:    userID,
+		NetworkID: networkID,
+		Name:      name,
+		OS:        domain.NormalizeDeviceOS(os),
+		OSVersion: osVersion,
+		PublicKey: publicKey,
+		VirtualIP: ip,
+		Status:    domain.DeviceStatusUnknown,
 	}
 	if err := s.devices.Create(ctx, d); err != nil {
 		return nil, err

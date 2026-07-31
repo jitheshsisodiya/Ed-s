@@ -43,24 +43,24 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
     environment:
+      # Variable names match backend/internal/config/config.go.
       DATABASE_URL: postgres://${POSTGRES_USER:-nexusvpn}:${POSTGRES_PASSWORD:-nexusvpn}@postgres:5432/${POSTGRES_DB:-nexusvpn}?sslmode=disable
-      REDIS_URL: redis://redis:6379/0
-      HTTP_PORT: ${BACKEND_HTTP_PORT:-8080}
-      GRPC_PORT: ${BACKEND_GRPC_PORT:-9090}
-      METRICS_PORT: ${BACKEND_METRICS_PORT:-9091}
+      REDIS_ADDR: redis:6379
+      HTTP_ADDR: ":8080"
+      GRPC_ADDR: ":9090"
+      METRICS_ADDR: ":9091"
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-only-access-secret-change-me}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-only-refresh-secret-change-me}
-      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
-      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-720h}
-      OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID:-}
-      OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:-}
-      OAUTH_GOOGLE_REDIRECT_URL: ${OAUTH_GOOGLE_REDIRECT_URL:-}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM: ${SMTP_FROM:-noreply@nexusvpn.local}
-      LOG_LEVEL: info
+      ACCESS_TOKEN_TTL: ${JWT_ACCESS_TTL:-15m}
+      REFRESH_TOKEN_TTL: ${JWT_REFRESH_TTL:-720h}
+      # Shared with the relay fleet (see the relay service below).
+      RELAY_SESSION_SECRET: ${JWT_RELAY_SECRET:-dev-relay-secret-change-me-please-32b}
+      GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URL: ${OAUTH_GOOGLE_REDIRECT_URL:-http://localhost:8080/api/v1/auth/oauth/google/callback}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "${BACKEND_HTTP_PORT:-8080}:8080"
       - "${BACKEND_GRPC_PORT:-9090}:9090"
@@ -75,12 +75,17 @@ services:
     depends_on:
       - backend
     environment:
-      BACKEND_GRPC_ADDR: backend:9090
+      BACKEND_URL: http://backend:8080
+      # Must match the backend's value: it authenticates relay registration
+      # and verifies the session tokens clients present.
+      RELAY_SESSION_SECRET: ${JWT_RELAY_SECRET:-dev-relay-secret-change-me-please-32b}
       RELAY_REGION: ${RELAY_REGION:-local}
       RELAY_PUBLIC_HOSTNAME: ${RELAY_PUBLIC_HOSTNAME:-localhost}
+      RELAY_CAPACITY: ${RELAY_CAPACITY:-1000}
       CONTROL_PORT: ${RELAY_CONTROL_PORT:-3478}
       DATA_PORT: ${RELAY_DATA_PORT:-3479}
       METRICS_PORT: ${RELAY_METRICS_PORT:-9092}
+      LOG_LEVEL: info
     ports:
       - "${RELAY_CONTROL_PORT:-3478}:3478/udp"
       - "${RELAY_DATA_PORT:-3479}:3479/udp"

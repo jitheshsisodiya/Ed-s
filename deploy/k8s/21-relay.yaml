@@ -31,9 +31,16 @@ spec:
       containers:
         - name: relay
           image: ghcr.io/jitheshsisodiya/ed-s-relay:latest
+          envFrom:
+            - secretRef: { name: nexusvpn-relay-secrets }
           env:
-            - name: BACKEND_GRPC_ADDR
-              value: "backend.nexusvpn.svc.cluster.local:9090"
+            - name: BACKEND_URL
+              value: "http://backend.nexusvpn.svc.cluster.local:8080"
+            # Each node advertises its own routable address, since both peers
+            # of a session must reach the same relay instance.
+            - name: RELAY_PUBLIC_HOSTNAME
+              valueFrom:
+                fieldRef: { fieldPath: status.hostIP }
             - name: RELAY_REGION
               valueFrom:
                 fieldRef: { fieldPath: spec.nodeName }
@@ -43,6 +50,8 @@ spec:
               value: "3479"
             - name: METRICS_PORT
               value: "9092"
+            - name: ENVIRONMENT
+              value: "production"
           ports:
             - { containerPort: 3478, protocol: UDP }
             - { containerPort: 3479, protocol: UDP }

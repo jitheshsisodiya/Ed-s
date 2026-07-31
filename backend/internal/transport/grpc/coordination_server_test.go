@@ -200,6 +200,7 @@ type relayRepo struct {
 }
 
 func (r *relayRepo) Create(context.Context, *domain.RelayServer) error { return nil }
+func (r *relayRepo) Upsert(context.Context, *domain.RelayServer) error { return nil }
 func (r *relayRepo) GetByID(context.Context, uuid.UUID) (*domain.RelayServer, error) {
 	return r.relay, nil
 }

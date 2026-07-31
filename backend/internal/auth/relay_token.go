@@ -13,8 +13,8 @@ import (
 // the same shared secret.
 type RelaySessionClaims struct {
 	jwt.RegisteredClaims
-	DeviceID string `json:"device_id"`
-	RelayID  string `json:"relay_id"`
+	DeviceID  string `json:"device_id"`
+	RelayID   string `json:"relay_id"`
 	NetworkID string `json:"network_id"`
 }
 

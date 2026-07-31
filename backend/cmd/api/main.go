@@ -149,6 +149,7 @@ func run() error {
 		Logger:      logger,
 		CORSOrigins: cfg.CORSOrigins,
 		WSHandler:   wsHub,
+		Relay:       httptransport.NewRelayHandler(relays, cfg.RelaySessionSecret),
 	})
 	router = logging.HTTPMiddleware(logger)(router)
 

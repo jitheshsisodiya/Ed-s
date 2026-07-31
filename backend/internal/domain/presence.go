@@ -11,12 +11,12 @@ import (
 // into the fast ephemeral presence store (Redis) so peer lookups don't need
 // to hit Postgres on every heartbeat.
 type PresenceEndpoint struct {
-	PublicIP   string
-	PublicPort uint32
-	PrivateIP  string
+	PublicIP    string
+	PublicPort  uint32
+	PrivateIP   string
 	PrivatePort uint32
-	NATType    string
-	UpdatedAt  time.Time
+	NATType     string
+	UpdatedAt   time.Time
 }
 
 // PresenceStore tracks which devices are currently online, backed by an

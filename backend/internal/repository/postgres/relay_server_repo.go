@@ -44,6 +44,33 @@ func (r *RelayServerRepo) Create(ctx context.Context, s *domain.RelayServer) err
 	return nil
 }
 
+// Upsert registers a relay node idempotently. On conflict with an existing
+// (hostname, relay_port) row the mutable fields are refreshed, the row is
+// re-marked active, and its heartbeat timestamp reset; current_load is
+// deliberately NOT overwritten so in-flight allocations survive a relay
+// restart race.
+func (r *RelayServerRepo) Upsert(ctx context.Context, s *domain.RelayServer) error {
+	row := r.db.QueryRow(ctx, `
+		INSERT INTO relay_servers (id, region, hostname, public_key, control_port, relay_port, capacity, current_load, status, last_heartbeat_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', now())
+		ON CONFLICT (hostname, relay_port) DO UPDATE SET
+			region = EXCLUDED.region,
+			public_key = EXCLUDED.public_key,
+			control_port = EXCLUDED.control_port,
+			capacity = EXCLUDED.capacity,
+			status = 'active',
+			last_heartbeat_at = now()
+		RETURNING `+relayServerColumns,
+		orNewID(s.ID), s.Region, s.Hostname, s.PublicKey, s.ControlPort, s.RelayPort, s.Capacity, s.CurrentLoad,
+	)
+	saved, err := scanRelayServer(row)
+	if err != nil {
+		return err
+	}
+	*s = *saved
+	return nil
+}
+
 // GetByID fetches a relay server by primary key.
 func (r *RelayServerRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.RelayServer, error) {
 	row := r.db.QueryRow(ctx, `SELECT `+relayServerColumns+` FROM relay_servers WHERE id = $1`, id)
