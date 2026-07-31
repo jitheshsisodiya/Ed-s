@@ -14,8 +14,10 @@ import (
 	"github.com/jitheshsisodiya/Ed-s/backend/internal/domain"
 )
 
-// inviteCodeAlphabet avoids ambiguous characters (0/O, 1/I/L).
-var inviteCodeEncoding = base32.NewEncoding("ABCDEFGHJKMNPQRSTUVWXYZ23456789").WithPadding(base32.NoPadding)
+// inviteCodeEncoding uses Crockford's base32 alphabet, which omits I, L, O
+// and U so an invite code read aloud or retyped can't be confused (0 vs O,
+// 1 vs I/L). base32 requires the alphabet to be exactly 32 characters.
+var inviteCodeEncoding = base32.NewEncoding("0123456789ABCDEFGHJKMNPQRSTVWXYZ").WithPadding(base32.NoPadding)
 
 func generateInviteCode() (string, error) {
 	b := make([]byte, 8)
@@ -214,9 +216,16 @@ func (s *NetworkService) Join(ctx context.Context, userID uuid.UUID, inviteCode 
 		return nil, domain.ErrInviteInvalid
 	}
 
+	// Joining a network the caller is already a member of is idempotent:
+	// return the network with their existing role rather than erroring.
 	if existing, err := s.members.Get(ctx, n.ID, userID); err == nil && existing != nil {
-		existing.Role = existing.Role
 		n.CallerRole = existing.Role
+		if mc, err := s.networks.CountMembers(ctx, n.ID); err == nil {
+			n.MemberCount = mc
+		}
+		if dc, err := s.networks.CountDevices(ctx, n.ID); err == nil {
+			n.DeviceCount = dc
+		}
 		return n, nil
 	}
 
