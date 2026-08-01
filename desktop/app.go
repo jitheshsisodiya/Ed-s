@@ -200,3 +200,22 @@ func (a *App) SetDeviceName(name string) error {
 	}
 	return a.agent.SetDeviceName(name)
 }
+
+// UseExitNode routes all of this machine's traffic through a peer that has
+// offered to carry it. This is the only mode in which NexusVPN changes what
+// the rest of the internet sees of this machine.
+func (a *App) UseExitNode(deviceID string, opts agent.ExitNodeOptions) error {
+	if err := a.ready(); err != nil {
+		return err
+	}
+	return a.agent.UseExitNode(deviceID, opts)
+}
+
+// StopUsingExitNode restores ordinary split-tunnel routing and lifts any
+// block the kill switch was holding.
+func (a *App) StopUsingExitNode() error {
+	if err := a.ready(); err != nil {
+		return err
+	}
+	return a.agent.StopUsingExitNode()
+}

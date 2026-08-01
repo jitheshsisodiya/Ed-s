@@ -30,3 +30,7 @@ export function Logout():Promise<void>;
 export function RotateDeviceKey():Promise<string>;
 
 export function SetDeviceName(arg1:string):Promise<void>;
+
+export function StopUsingExitNode():Promise<void>;
+
+export function UseExitNode(arg1:string,arg2:agent.ExitNodeOptions):Promise<void>;

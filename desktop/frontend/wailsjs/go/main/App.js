@@ -57,3 +57,11 @@ export function RotateDeviceKey() {
 export function SetDeviceName(arg1) {
   return window['go']['main']['App']['SetDeviceName'](arg1);
 }
+
+export function StopUsingExitNode() {
+  return window['go']['main']['App']['StopUsingExitNode']();
+}
+
+export function UseExitNode(arg1, arg2) {
+  return window['go']['main']['App']['UseExitNode'](arg1, arg2);
+}

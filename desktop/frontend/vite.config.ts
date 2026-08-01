@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 // main.go embeds frontend/dist with go:embed, which fails outright when the
 // directory does not exist — so a fresh clone needs a committed placeholder
@@ -21,5 +22,5 @@ function keepEmbedDirTracked() {
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react(), keepEmbedDirTracked()],
+  plugins: [react(), tailwindcss(), keepEmbedDirTracked()],
 })

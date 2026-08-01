@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { AlertTriangle, Bell, KeyRound, ShieldAlert, Sliders, X } from 'lucide-react';
 
 import {
   Connect,
@@ -14,126 +16,60 @@ import {
   Logout,
   RotateDeviceKey,
   SetDeviceName,
+  StopUsingExitNode,
+  UseExitNode,
 } from '../wailsjs/go/main/App';
 import { EventsOff, EventsOn } from '../wailsjs/runtime/runtime';
+import { Quit } from '../wailsjs/runtime/runtime';
 import type { agent } from '../wailsjs/go/models';
 
-import Icon, { deviceIcon } from './Icon';
+import Dialog, { Danger, Input, Primary, Row, Secondary, Toggle } from './Dialog';
 import Invite from './Invite';
-import './App.css';
+import MenuBar, { item, separator } from './MenuBar';
+import NetworkTree, { setSelfAddress } from './NetworkTree';
+import ReactorCore, { type Phase } from './ReactorCore';
+import Scrambler from './Scrambler';
+import Telemetry, { type Sample } from './Telemetry';
+import './theme.css';
 
 /* ============================================================
-   Preferences kept in the webview, not the config file: they are
-   presentation choices, and losing one costs a user nothing.
+   Shell.
+
+   Radmin's layout: a menu bar, an identity strip carrying the
+   one switch and your own address, then the tree of networks and
+   machines filling everything below it. The instrumentation lives
+   in a status strip along the bottom, where it can be read but
+   never competes with the list.
    ============================================================ */
 
-type Theme = 'system' | 'light' | 'dark';
-
-function usePreference(key: string, fallback: string) {
-  const [value, setValue] = useState(() => localStorage.getItem(key) ?? fallback);
-  const update = useCallback(
-    (next: string) => {
-      localStorage.setItem(key, next);
-      setValue(next);
-    },
-    [key],
-  );
-  return [value, update] as const;
-}
-
-/** Turns an error from the Go bridge into something a person can read. */
-function humanError(err: unknown): { message: string; fix?: string } {
-  const raw = typeof err === 'string' ? err : err instanceof Error ? err.message : String(err);
-  const lower = raw.toLowerCase();
-
-  if (lower.includes('administrator') || lower.includes('root')) {
-    return {
-      message: 'NexusVPN needs permission to create a secure tunnel.',
-      fix: 'Quit and reopen the app as an administrator. Nothing else on your computer changes.',
-    };
-  }
-  if (lower.includes('not signed in') || lower.includes('unauthorized') || lower.includes('token')) {
-    return { message: 'Your session has expired.', fix: 'Sign in again to continue.' };
-  }
-  if (lower.includes('invite')) {
-    return { message: "That invite code didn't work.", fix: 'Codes expire — ask for a fresh one.' };
-  }
-  if (lower.includes('connection refused') || lower.includes('no such host') || lower.includes('dial')) {
-    return {
-      message: "Can't reach your server.",
-      fix: 'Check that you are online and that the server address is right.',
-    };
-  }
-  if (lower.includes('already connected')) {
-    return { message: 'You are already connected.', fix: 'Disconnect first to switch networks.' };
-  }
-  return { message: raw };
-}
-
-function formatBytes(n: number): string {
-  if (!n) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1);
-  return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-}
-
-/**
- * How traffic reaches a peer, said without jargon. The quality chip beside
- * it already carries the verdict, so this line answers "why" rather than
- * repeating "Online".
- */
-function describePath(mode: string): string {
-  switch (mode) {
-    case 'direct':
-      return 'Direct connection';
-    case 'relay':
-      return 'Connected through a relay';
-    case 'connecting':
-      return 'Finding the best route…';
-    default:
-      return 'Online';
-  }
-}
-
-/** Human duration since an ISO timestamp — "just now", "4 min", "2 days". */
-function since(iso: string): string {
-  if (!iso) return '';
-  const secs = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (secs < 45) return 'just now';
-  if (secs < 3600) return `${Math.round(secs / 60)} min ago`;
-  if (secs < 86400) return `${Math.round(secs / 3600)} hr ago`;
-  return `${Math.round(secs / 86400)} days ago`;
-}
-
-/* ============================================================
-   Shell
-   ============================================================ */
+type Modal =
+  | { kind: 'create' }
+  | { kind: 'join' }
+  | { kind: 'settings' }
+  | { kind: 'rename' }
+  | { kind: 'properties'; peer: agent.Peer }
+  | { kind: 'invite'; network: agent.Network }
+  | null;
 
 export default function App() {
   const [session, setSession] = useState<agent.Session | null>(null);
   const [version, setVersion] = useState('');
   const [status, setStatus] = useState<agent.Status | null>(null);
+  const [networks, setNetworks] = useState<agent.Network[]>([]);
   const [logs, setLogs] = useState<string[]>([]);
   const [error, setError] = useState<{ message: string; fix?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
-  const [showSettings, setShowSettings] = useState(false);
+  const [modal, setModal] = useState<Modal>(null);
+  const [history, setHistory] = useState<Sample[]>([]);
+  const previous = useRef<{ sent: number; recv: number } | null>(null);
 
-  const [theme, setTheme] = usePreference('nexusvpn.theme', 'system');
-  const [advanced, setAdvanced] = usePreference('nexusvpn.advanced', 'off');
-  const isAdvanced = advanced === 'on';
+  const [lastNetwork, setLastNetwork] = usePreference('nexusvpn.lastNetwork', '');
+  const [killSwitchPref, setKillSwitchPref] = usePreference('nexusvpn.killSwitch', 'on');
+  const [allowLanPref, setAllowLanPref] = usePreference('nexusvpn.allowLan', 'on');
 
-  // Apply the theme choice to the document root; "system" removes the
-  // override so prefers-color-scheme takes back over.
-  useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'system') root.removeAttribute('data-theme');
-    else root.setAttribute('data-theme', theme);
-  }, [theme]);
-
-  const refreshSession = useCallback(async () => {
-    setSession(await GetSession());
-  }, []);
+  const refreshSession = useCallback(async () => setSession(await GetSession()), []);
+  const refreshNetworks = useCallback(async () => setNetworks(await ListNetworks()), []);
 
   useEffect(() => {
     GetAppInfo()
@@ -146,7 +82,11 @@ export default function App() {
   }, [refreshSession]);
 
   useEffect(() => {
-    EventsOn('tunnel:log', (line: string) => setLogs((prev) => [...prev.slice(-200), line]));
+    if (session?.loggedIn) refreshNetworks().catch(() => undefined);
+  }, [session?.loggedIn, refreshNetworks]);
+
+  useEffect(() => {
+    EventsOn('tunnel:log', (line: string) => setLogs((p) => [...p.slice(-300), line]));
     EventsOn('tunnel:disconnected', () => setStatus(null));
     return () => {
       EventsOff('tunnel:log');
@@ -154,10 +94,37 @@ export default function App() {
     };
   }, []);
 
+  // One poll feeds the readouts and the traces, so a figure in the list and
+  // a point on a graph always come from the same instant.
   useEffect(() => {
     const tick = () =>
       GetStatus()
-        .then((s) => setStatus(s.connected ? s : null))
+        .then((s) => {
+          setStatus(s.connected ? s : null);
+          setSelfAddress(s.connected ? s.virtualIp : '');
+          if (!s.connected) {
+            previous.current = null;
+            return;
+          }
+          const sent = s.peers?.reduce((a, p) => a + p.bytesSent, 0) ?? 0;
+          const recv = s.peers?.reduce((a, p) => a + p.bytesReceived, 0) ?? 0;
+          const prev = previous.current;
+          previous.current = { sent, recv };
+          // The first tick has nothing to subtract from, so charting it
+          // would render the whole session as one spike and flatten
+          // everything that came after.
+          if (!prev) return;
+          setHistory((h) =>
+            [
+              ...h,
+              {
+                latencyMs: bestLatency(s.peers ?? []),
+                sentDelta: Math.max(0, (sent - prev.sent) / 2),
+                recvDelta: Math.max(0, (recv - prev.recv) / 2),
+              },
+            ].slice(-60),
+          );
+        })
         .catch(() => undefined);
     tick();
     const id = window.setInterval(tick, 2000);
@@ -166,7 +133,7 @@ export default function App() {
 
   const notify = useCallback((text: string) => {
     setToast(text);
-    window.setTimeout(() => setToast(''), 1800);
+    window.setTimeout(() => setToast(''), 1900);
   }, []);
 
   const run = useCallback(async (fn: () => Promise<void>) => {
@@ -183,137 +150,741 @@ export default function App() {
 
   const copy = useCallback(
     (text: string, label = 'Copied') => {
-      void CopyToClipboard(text)
-        .then(() => notify(label))
-        .catch(() => undefined);
+      void CopyToClipboard(text).then(() => notify(label)).catch(() => undefined);
     },
     [notify],
   );
 
-  const cycleTheme = () => {
-    const next: Theme = theme === 'system' ? 'light' : theme === 'light' ? 'dark' : 'system';
-    setTheme(next);
+  const connected = status !== null;
+  const phase: Phase = connected
+    ? status.state === 'dropped'
+      ? 'dropped'
+      : status.state === 'handshaking'
+        ? 'handshaking'
+        : 'active'
+    : busy
+      ? 'handshaking'
+      : 'idle';
+
+  const target = networks.length === 1 ? networks[0] : networks.find((n) => n.id === lastNetwork);
+
+  const connectTo = (n: agent.Network) =>
+    run(async () => {
+      setLastNetwork(n.id);
+      setHistory([]);
+      await Connect(n.id);
+    });
+
+  const disconnect = () =>
+    run(async () => {
+      await Disconnect();
+      setStatus(null);
+      setHistory([]);
+    });
+
+  const toggle = () => {
+    if (connected) return void disconnect();
+    if (target) void connectTo(target);
   };
 
   if (!session) {
     return (
-      <div className="app center">
-        <p className="substatus">Starting NexusVPN…</p>
+      <div className="grid h-full place-items-center bg-deck-900">
+        <span className="eyebrow">Initialising</span>
       </div>
     );
   }
 
+  if (!session.loggedIn) {
+    return (
+      <Access busy={busy} run={run} onDone={refreshSession} defaultServer={session.serverUrl} />
+    );
+  }
+
   return (
-    <div className="app">
-      <header className="titlebar">
-        <div className="brand">
-          <span className="mark" aria-hidden="true">
-            N
-          </span>
-          NexusVPN
-        </div>
-        {session.loggedIn && (
-          <div className="titlebar-actions">
-            <button
-              className="icon-btn"
-              onClick={cycleTheme}
-              title={`Appearance: ${theme}`}
-              aria-label={`Appearance: ${theme}. Click to change.`}
-            >
-              <Icon name={theme === 'light' ? 'sun' : theme === 'dark' ? 'moon' : 'theme-auto'} />
-            </button>
-            <button
-              className={showSettings ? 'icon-btn on' : 'icon-btn'}
-              onClick={() => setShowSettings((v) => !v)}
-              title="Settings"
-              aria-label="Settings"
-            >
-              <Icon name="settings" />
-            </button>
-          </div>
-        )}
+    <div className="flex h-full flex-col bg-deck-900">
+      {/* Title bar doubles as the drag handle and carries the menus. */}
+      <header
+        className="flex h-8 shrink-0 items-center gap-2 border-b border-deck-line bg-deck-800 pl-2.5 pr-1"
+        style={{ ['--wails-draggable' as string]: 'drag' }}
+      >
+        <span className="mr-1 font-mono text-[10.5px] font-semibold tracking-[0.2em] uppercase text-ink">
+          Nexus<span className="text-live">VPN</span>
+        </span>
+
+        <MenuBar
+          menus={[
+            {
+              label: 'System',
+              items: [
+                item('Change name…', () => setModal({ kind: 'rename' })),
+                item('Settings…', () => setModal({ kind: 'settings' })),
+                separator,
+                item('Sign out', () => void run(() => Logout())),
+                item('Exit', () => Quit()),
+              ],
+            },
+            {
+              label: 'Network',
+              items: [
+                item('Create network…', () => setModal({ kind: 'create' }), { hint: 'Ins' }),
+                item('Join network…', () => setModal({ kind: 'join' }), { hint: '+' }),
+                separator,
+                item('Disconnect', disconnect, { disabled: !connected }),
+              ],
+            },
+          ]}
+        />
+
+        <span
+          className="ml-auto mr-1.5 flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase"
+          style={{ color: STATE_COLOR[phase] }}
+        >
+          <motion.span
+            className="inline-block h-[5px] w-[5px] rounded-full"
+            style={{ background: STATE_COLOR[phase] }}
+            animate={
+              phase === 'active' || phase === 'dropped' ? { opacity: [1, 0.3, 1] } : { opacity: 1 }
+            }
+            transition={{ duration: phase === 'dropped' ? 0.8 : 2.6, repeat: Infinity }}
+          />
+          {STATE_WORD[phase]}
+        </span>
       </header>
 
-      <main className={session.loggedIn ? undefined : 'entry'}>
-        <div className="sheet">
-          {error && (
-            <div className="banner fade-in" role="alert">
-              <span className="glyph">
-                <Icon name="alert" size={17} />
+      {/* Identity strip: the switch, who you are, and where you are. */}
+      <section className="relative flex shrink-0 items-center gap-4 overflow-hidden border-b border-deck-line bg-deck-800/60 px-4 py-3">
+        <DotField live={phase === 'active'} />
+
+        <ReactorCore
+          phase={phase}
+          size={92}
+          label={CORE_LABEL[phase]}
+          disabled={busy || (!connected && !target)}
+          onClick={toggle}
+        />
+
+        <div className="z-10 min-w-0 flex-1">
+          <div className="truncate text-[15px] font-medium text-ink">{session.deviceName}</div>
+          {/* The address takes the state's colour too. Left cyan while the
+              tunnel is lost it would read as "all fine" next to a crimson
+              core, which is the one moment the strip must not disagree with
+              itself. */}
+          <Scrambler
+            value={status?.virtualIp ?? ''}
+            active={phase === 'active'}
+            className="block font-mono text-[19px] leading-tight tracking-[0.04em]"
+            style={{ color: STATE_COLOR[phase] }}
+          />
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <span
+              className="border px-1.5 py-[1px] font-mono text-[9.5px] tracking-[0.12em] uppercase"
+              style={{ color: STATE_COLOR[phase], borderColor: STATE_COLOR[phase] }}
+            >
+              {STATE_WORD[phase]}
+            </span>
+            {status?.exitNodeId && (
+              <span className="border border-live/40 px-1.5 py-[1px] font-mono text-[9.5px] tracking-[0.12em] uppercase text-live">
+                exit route
               </span>
-              <div>
-                <p>{error.message}</p>
-                {error.fix && <p className="fix">{error.fix}</p>}
-              </div>
-            </div>
-          )}
-
-          {!session.loggedIn ? (
-            <Welcome busy={busy} run={run} onDone={refreshSession} defaultServer={session.serverUrl} />
-          ) : showSettings ? (
-            <Settings
-              session={session}
-              version={version}
-              busy={busy}
-              run={run}
-              advanced={isAdvanced}
-              onAdvanced={(on) => setAdvanced(on ? 'on' : 'off')}
-              theme={theme as Theme}
-              onTheme={setTheme}
-              onChanged={refreshSession}
-              onClose={() => setShowSettings(false)}
-              onCopy={copy}
-            />
-          ) : (
-            <Home
-              status={status}
-              logs={logs}
-              busy={busy}
-              run={run}
-              advanced={isAdvanced}
-              onStatus={setStatus}
-              onCopy={copy}
-            />
-          )}
+            )}
+            {status?.killSwitchEngaged && (
+              <span className="flex items-center gap-1 border border-fail/45 px-1.5 py-[1px] font-mono text-[9.5px] tracking-[0.12em] uppercase text-fail">
+                <ShieldAlert size={9} aria-hidden="true" /> locked
+              </span>
+            )}
+          </div>
         </div>
-      </main>
+      </section>
 
-      {toast && <div className="toast">{toast}</div>}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="flex shrink-0 items-start gap-2.5 border-b border-fail/40 bg-fail/10 px-3 py-2"
+            role="alert"
+          >
+            <AlertTriangle size={13} className="mt-0.5 shrink-0 text-fail" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[12px] text-ink">{error.message}</p>
+              {error.fix && <p className="mt-0.5 text-[11.5px] text-ink-dim">{error.fix}</p>}
+            </div>
+            <button
+              onClick={() => setError(null)}
+              className="text-ink-faint hover:text-ink"
+              aria-label="Dismiss"
+            >
+              <X size={13} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <NetworkTree
+        networks={networks}
+        peers={status?.peers ?? []}
+        activeNetworkId={status?.networkId ?? ''}
+        exitNodeId={status?.exitNodeId ?? ''}
+        selfName={session.deviceName}
+        busy={busy}
+        connected={connected}
+        onConnect={connectTo}
+        onDisconnect={disconnect}
+        onShare={(network) => setModal({ kind: 'invite', network })}
+        onCopy={copy}
+        onUseExit={(peer) =>
+          run(() =>
+            UseExitNode(peer.deviceId, {
+              killSwitch: killSwitchPref === 'on',
+              allowLan: allowLanPref === 'on',
+            }),
+          )
+        }
+        onStopExit={() => run(() => StopUsingExitNode())}
+        onProperties={(peer) => setModal({ kind: 'properties', peer })}
+      />
+
+      <StatusStrip connected={connected} history={history} activeSince={status?.activeSince ?? ''} />
+
+      {/* Dialogs */}
+      {modal?.kind === 'create' && (
+        <CreateDialog
+          busy={busy}
+          onClose={() => setModal(null)}
+          onCreate={(name) =>
+            run(async () => {
+              await CreateNetwork(name, '', '');
+              setModal(null);
+              await refreshNetworks();
+            })
+          }
+        />
+      )}
+      {modal?.kind === 'join' && (
+        <JoinDialog
+          busy={busy}
+          onClose={() => setModal(null)}
+          onJoin={(code) =>
+            run(async () => {
+              await JoinNetwork(code);
+              setModal(null);
+              await refreshNetworks();
+            })
+          }
+        />
+      )}
+      {modal?.kind === 'rename' && (
+        <RenameDialog
+          current={session.deviceName}
+          busy={busy}
+          onClose={() => setModal(null)}
+          onSave={(name) =>
+            run(async () => {
+              await SetDeviceName(name);
+              setModal(null);
+              await refreshSession();
+            })
+          }
+        />
+      )}
+      {modal?.kind === 'settings' && (
+        <SettingsDialog
+          session={session}
+          version={version}
+          busy={busy}
+          logs={logs}
+          killSwitch={killSwitchPref === 'on'}
+          allowLan={allowLanPref === 'on'}
+          onKillSwitch={(v) => setKillSwitchPref(v ? 'on' : 'off')}
+          onAllowLan={(v) => setAllowLanPref(v ? 'on' : 'off')}
+          onRotate={() => run(async () => void (await RotateDeviceKey()))}
+          onCopy={copy}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal?.kind === 'properties' && (
+        <PropertiesDialog
+          peer={modal.peer}
+          networkName={networks.find((n) => n.id === status?.networkId)?.name ?? ''}
+          onCopy={copy}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal?.kind === 'invite' && (
+        <Invite network={modal.network} onClose={() => setModal(null)} onCopy={copy} />
+      )}
+
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            className="pointer-events-none fixed bottom-9 left-1/2 z-50 -translate-x-1/2 border border-live/40 bg-deck-800 px-3.5 py-1.5 font-mono text-[10.5px] tracking-[0.1em] uppercase text-live"
+          >
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-interface Common {
-  busy: boolean;
-  run: (fn: () => Promise<void>) => Promise<void>;
+/* ============================================================
+   Status strip
+   ============================================================ */
+
+function StatusStrip({
+  connected,
+  history,
+  activeSince,
+}: {
+  connected: boolean;
+  history: Sample[];
+  activeSince: string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="shrink-0 border-t border-deck-line bg-deck-800">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        disabled={!connected}
+        className="flex w-full items-center gap-3 px-3 py-1.5 text-left disabled:cursor-default"
+      >
+        <span className="eyebrow">Telemetry</span>
+        {connected ? (
+          <>
+            <Inline label="rtt" value={fmtLatency(history.at(-1)?.latencyMs ?? -1)} />
+            <Inline label="down" value={rate(history.at(-1)?.recvDelta ?? 0)} />
+            <Inline label="up" value={rate(history.at(-1)?.sentDelta ?? 0)} />
+            <span className="ml-auto font-mono text-[10px] text-ink-faint">
+              {elapsed(activeSince)}
+            </span>
+          </>
+        ) : (
+          <span className="font-mono text-[10px] text-ink-faint">idle</span>
+        )}
+      </button>
+
+      <AnimatePresence>
+        {open && connected && (
+          <motion.div
+            initial={{ height: 0 }}
+            animate={{ height: 'auto' }}
+            exit={{ height: 0 }}
+            className="overflow-hidden border-t border-deck-line"
+          >
+            <div className="p-3">
+              <Telemetry history={history} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function Inline({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="flex items-baseline gap-1 font-mono text-[10.5px]">
+      <span className="text-ink-faint">{label}</span>
+      <span className="text-ink-dim">{value}</span>
+    </span>
+  );
 }
 
 /* ============================================================
-   Welcome — one screen, one decision
+   Dialogs
    ============================================================ */
 
-function Welcome({
+function CreateDialog({
+  busy,
+  onClose,
+  onCreate,
+}: {
+  busy: boolean;
+  onClose: () => void;
+  onCreate: (name: string) => void;
+}) {
+  const [name, setName] = useState('');
+  return (
+    <Dialog
+      title="Create network"
+      onClose={onClose}
+      footer={
+        <>
+          <Secondary onClick={onClose}>Cancel</Secondary>
+          <Primary disabled={busy || !name.trim()} onClick={() => onCreate(name)}>
+            Create
+          </Primary>
+        </>
+      }
+    >
+      <form
+        className="p-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (name.trim()) onCreate(name);
+        }}
+      >
+        <Row label="Network name">
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Home Lab" required />
+        </Row>
+        {/* No password field. Radmin gates a network on a shared secret
+            everyone types; here membership is an account on your control
+            plane and the invite code is single-purpose, so a password
+            would be a second, weaker credential for the same door. */}
+        <p className="mt-1 text-[11.5px] leading-relaxed text-ink-faint">
+          The address range, routing and keys are handled for you. Invite people afterwards with
+          a code or a QR — no shared password to circulate or change.
+        </p>
+      </form>
+    </Dialog>
+  );
+}
+
+function JoinDialog({
+  busy,
+  onClose,
+  onJoin,
+}: {
+  busy: boolean;
+  onClose: () => void;
+  onJoin: (code: string) => void;
+}) {
+  const [code, setCode] = useState('');
+  return (
+    <Dialog
+      title="Join network"
+      onClose={onClose}
+      footer={
+        <>
+          <Secondary onClick={onClose}>Cancel</Secondary>
+          <Primary disabled={busy || !code.trim()} onClick={() => onJoin(code)}>
+            Join
+          </Primary>
+        </>
+      }
+    >
+      <form
+        className="p-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (code.trim()) onJoin(code);
+        }}
+      >
+        <Row label="Invite">
+          <Input
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="K7M2QP"
+            required
+          />
+        </Row>
+        <p className="mt-1 text-[11.5px] leading-relaxed text-ink-faint">
+          Paste the code or the whole link you were sent — either works.
+        </p>
+      </form>
+    </Dialog>
+  );
+}
+
+function RenameDialog({
+  current,
+  busy,
+  onClose,
+  onSave,
+}: {
+  current: string;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (name: string) => void;
+}) {
+  const [name, setName] = useState(current);
+  return (
+    <Dialog
+      title="Change name"
+      onClose={onClose}
+      footer={
+        <>
+          <Secondary onClick={onClose}>Cancel</Secondary>
+          <Primary disabled={busy || !name.trim()} onClick={() => onSave(name)}>
+            Save
+          </Primary>
+        </>
+      }
+    >
+      <form
+        className="p-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (name.trim()) onSave(name);
+        }}
+      >
+        <Row label="This machine">
+          <Input value={name} onChange={(e) => setName(e.target.value)} required />
+        </Row>
+        <p className="mt-1 text-[11.5px] text-ink-faint">The name everyone else sees.</p>
+      </form>
+    </Dialog>
+  );
+}
+
+function PropertiesDialog({
+  peer,
+  networkName,
+  onCopy,
+  onClose,
+}: {
+  peer: agent.Peer;
+  networkName: string;
+  onCopy: (text: string, label?: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog
+      title={`Properties: ${peer.deviceName || 'machine'}`}
+      onClose={onClose}
+      width={430}
+      footer={
+        <>
+          <Secondary onClick={() => onCopy(peer.virtualIp, 'Address copied')}>
+            Copy address
+          </Secondary>
+          <Primary onClick={onClose}>Close</Primary>
+        </>
+      }
+    >
+      <div className="p-4">
+        <Group title="Machine">
+          <Fact label="Name" value={peer.deviceName || '—'} />
+          <Fact label="Platform" value={peer.os || 'unknown'} />
+          <Fact label="Address" value={peer.virtualIp || '—'} mono />
+          <Fact label="Device ID" value={peer.deviceId} mono small />
+        </Group>
+
+        <Group title="Network">
+          <Fact label="Network" value={networkName || '—'} />
+          <Fact label="Offers exit" value={peer.exitNode ? 'yes' : 'no'} />
+        </Group>
+
+        <Group title="Connection">
+          <Fact label="Status" value={peer.quality} />
+          <Fact label="Path" value={PATH_WORD[peer.mode] ?? peer.mode ?? '—'} />
+          <Fact label="Round trip" value={peer.latencyMs >= 0 ? `${peer.latencyMs} ms` : 'not measured'} mono />
+          <Fact label="Endpoint" value={peer.endpoint || '—'} mono small />
+          <Fact label="Last handshake" value={peer.lastHandshake ? new Date(peer.lastHandshake).toLocaleString() : 'never'} />
+          <Fact label="Transferred" value={`${bytes(peer.bytesSent)} up · ${bytes(peer.bytesReceived)} down`} mono />
+        </Group>
+      </div>
+    </Dialog>
+  );
+}
+
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <fieldset className="mb-3 rounded-[2px] border border-deck-line px-3 pb-2.5 pt-1 last:mb-0">
+      <legend className="eyebrow px-1">{title}</legend>
+      {children}
+    </fieldset>
+  );
+}
+
+function Fact({
+  label,
+  value,
+  mono,
+  small,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  small?: boolean;
+}) {
+  return (
+    <div className="flex items-baseline gap-3 py-[3px]">
+      <span className="w-[104px] shrink-0 text-[11.5px] text-ink-faint">{label}</span>
+      <span
+        className={`min-w-0 flex-1 break-all ${mono ? 'font-mono' : ''} ${
+          small ? 'text-[10.5px]' : 'text-[12px]'
+        } text-ink-dim`}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function SettingsDialog({
+  session,
+  version,
+  busy,
+  logs,
+  killSwitch,
+  allowLan,
+  onKillSwitch,
+  onAllowLan,
+  onRotate,
+  onCopy,
+  onClose,
+}: {
+  session: agent.Session;
+  version: string;
+  busy: boolean;
+  logs: string[];
+  killSwitch: boolean;
+  allowLan: boolean;
+  onKillSwitch: (v: boolean) => void;
+  onAllowLan: (v: boolean) => void;
+  onRotate: () => void;
+  onCopy: (text: string, label?: string) => void;
+  onClose: () => void;
+}) {
+  const [tab, setTab] = useState<'general' | 'routing' | 'diagnostics'>('general');
+
+  return (
+    <Dialog
+      title="Settings"
+      onClose={onClose}
+      width={560}
+      footer={<Primary onClick={onClose}>Done</Primary>}
+    >
+      <div className="flex min-h-[300px]">
+        <nav className="w-[150px] shrink-0 border-r border-deck-line py-2">
+          {(
+            [
+              ['general', 'General', Sliders],
+              ['routing', 'Routing', ShieldAlert],
+              ['diagnostics', 'Diagnostics', Bell],
+            ] as const
+          ).map(([id, label, Icon]) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] transition-colors ${
+                tab === id ? 'bg-live/12 text-live' : 'text-ink-dim hover:text-ink'
+              }`}
+            >
+              <Icon size={13} aria-hidden="true" />
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="min-w-0 flex-1 p-4">
+          {tab === 'general' && (
+            <>
+              <Group title="Account">
+                <Fact label="Signed in as" value={session.email} />
+                <Fact label="Server" value={session.serverUrl} small />
+                <Fact label="This machine" value={session.deviceName} />
+                <Fact label="Version" value={version} mono />
+              </Group>
+              <Group title="Device key">
+                <p className="mb-2 text-[11.5px] leading-relaxed text-ink-dim">
+                  The private half never leaves this machine. Rotating disconnects the tunnel and
+                  retires the old key everywhere once this machine signs back in.
+                </p>
+                <div className="mb-2 overflow-x-auto rounded-[2px] border border-deck-line bg-deck-900 px-2 py-1.5 font-mono text-[10.5px] text-ink-dim">
+                  {session.publicKey}
+                </div>
+                <div className="flex gap-1.5">
+                  <Secondary onClick={() => onCopy(session.publicKey, 'Public key copied')}>
+                    Copy
+                  </Secondary>
+                  <Danger disabled={busy} onClick={onRotate}>
+                    <span className="flex items-center gap-1">
+                      <KeyRound size={11} /> Rotate
+                    </span>
+                  </Danger>
+                </div>
+              </Group>
+            </>
+          )}
+
+          {tab === 'routing' && (
+            <>
+              <p className="mb-3 text-[11.5px] leading-relaxed text-ink-dim">
+                These apply when you route all of this machine&rsquo;s traffic through another
+                machine — right-click one that offers it. They do nothing on an ordinary mesh
+                connection, where each machine only carries its own address.
+              </p>
+              <div className="mb-3">
+                <Toggle
+                  checked={killSwitch}
+                  onChange={onKillSwitch}
+                  label={killSwitch ? 'Kill switch on' : 'Kill switch off'}
+                />
+                <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-faint">
+                  If the tunnel drops while it is carrying everything, block traffic rather than
+                  letting it fall back to your ordinary connection in the clear.
+                </p>
+              </div>
+              <div>
+                <Toggle
+                  checked={allowLan}
+                  onChange={onAllowLan}
+                  label={allowLan ? 'Local network allowed' : 'Local network blocked'}
+                />
+                <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-faint">
+                  Keep your printer, NAS and router reachable while blocked. Turn this off only on
+                  a network you do not trust, where the machines around you are the point.
+                </p>
+              </div>
+            </>
+          )}
+
+          {tab === 'diagnostics' && (
+            <>
+              <span className="eyebrow mb-2 block">Engine log</span>
+              <pre className="max-h-[240px] overflow-auto rounded-[2px] border border-deck-line bg-deck-900 p-2 font-mono text-[10.5px] leading-relaxed whitespace-pre-wrap text-ink-faint">
+                {logs.slice(-120).join('\n') || 'Nothing yet.'}
+              </pre>
+              <div className="mt-2">
+                <Secondary onClick={() => onCopy(logs.join('\n'), 'Log copied')}>
+                  Copy log
+                </Secondary>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+/* ============================================================
+   Access
+   ============================================================ */
+
+function Access({
   busy,
   run,
   onDone,
   defaultServer,
-}: Common & { onDone: () => Promise<void>; defaultServer: string }) {
-  const [showServer, setShowServer] = useState(false);
+}: {
+  busy: boolean;
+  run: (fn: () => Promise<void>) => Promise<void>;
+  onDone: () => Promise<void>;
+  defaultServer: string;
+}) {
   const [server, setServer] = useState(defaultServer);
+  const [showServer, setShowServer] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [mfaCode, setMfaCode] = useState('');
+  const [mfa, setMfa] = useState('');
   const [needsMfa, setNeedsMfa] = useState(false);
-  const [withEmail, setWithEmail] = useState(false);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     void run(async () => {
       try {
-        await Login(server, email, password, mfaCode);
+        await Login(server, email, password, mfa);
       } catch (err) {
-        const raw = typeof err === 'string' ? err : String(err);
-        if (raw.includes('mfa_required')) {
+        if (String(err).includes('mfa_required')) {
           setNeedsMfa(true);
           return;
         }
@@ -324,612 +895,201 @@ function Welcome({
   };
 
   return (
-    <>
-      <div className="welcome">
-        <div className="mark-lg" aria-hidden="true">
-          N
-        </div>
-        <h1>Welcome to NexusVPN</h1>
-        <p>Connect your computers as if they were in the same room.</p>
-      </div>
+    <div className="grid-field grid h-full place-items-center bg-deck-900 p-8">
+      <motion.form
+        onSubmit={submit}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="panel ticked w-full max-w-[330px] p-6"
+      >
+        <p className="font-mono text-[13px] font-semibold tracking-[0.22em] uppercase text-ink">
+          Nexus<span className="text-live">VPN</span>
+        </p>
+        <p className="mb-5 mt-1.5 text-[12px] text-ink-dim">
+          Your machines, on one network, wherever they are.
+        </p>
 
-      {!withEmail ? (
-        <div className="card">
-          <div className="providers">
-            <button className="provider" onClick={() => setWithEmail(true)}>
-              <span className="glyph">
-                <Icon name="mail" size={17} />
-              </span>
-              Continue with email
-            </button>
-            {/* Only Google is wired in the backend today. The others are
-                shown so the path is obvious, and disabled so nobody hits a
-                dead end. */}
-            <button className="provider" disabled>
-              <span className="glyph" aria-hidden="true">
-                G
-              </span>
-              Continue with Google
-              <span className="soon">Soon</span>
-            </button>
-            <button className="provider" disabled>
-              <span className="glyph" aria-hidden="true">
-                ⊞
-              </span>
-              Continue with Microsoft
-              <span className="soon">Soon</span>
-            </button>
-          </div>
-        </div>
-      ) : (
-        <form className="card fade-in" onSubmit={submit} style={{ display: 'grid', gap: 14 }}>
-          <div className="field">
-            <label htmlFor="email">Email</label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoFocus
-              required
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
+        <div className="grid gap-3">
+          <label className="grid gap-1">
+            <span className="eyebrow">Email</span>
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+          </label>
+          <label className="grid gap-1">
+            <span className="eyebrow">Password</span>
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          </label>
 
-          {needsMfa && (
-            <div className="field fade-in">
-              <label htmlFor="mfa">Authentication code</label>
-              <input
-                id="mfa"
-                value={mfaCode}
-                onChange={(e) => setMfaCode(e.target.value)}
-                inputMode="numeric"
-                placeholder="123456"
-                autoFocus
-                required
-              />
-              <span className="hint">From your authenticator app.</span>
-            </div>
-          )}
+          <AnimatePresence>
+            {needsMfa && (
+              <motion.label
+                className="grid gap-1"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+              >
+                <span className="eyebrow">Authentication code</span>
+                <Input value={mfa} onChange={(e) => setMfa(e.target.value)} placeholder="123456" required autoFocus />
+              </motion.label>
+            )}
+          </AnimatePresence>
 
           {showServer ? (
-            <div className="field fade-in">
-              <label htmlFor="server">Your server</label>
-              <input
-                id="server"
-                value={server}
-                onChange={(e) => setServer(e.target.value)}
-                placeholder="https://nexus.example.com"
-                required
-              />
-              <span className="hint">Leave this alone unless you run your own.</span>
-            </div>
+            <label className="grid gap-1">
+              <span className="eyebrow">Your server</span>
+              <Input value={server} onChange={(e) => setServer(e.target.value)} required />
+            </label>
           ) : (
-            <button type="button" className="text-btn" onClick={() => setShowServer(true)}>
-              Use your own server
-            </button>
-          )}
-
-          <button className="btn primary block" type="submit" disabled={busy}>
-            {busy ? 'Signing in…' : 'Sign in'}
-          </button>
-          <button type="button" className="text-btn" onClick={() => setWithEmail(false)}>
-            Back
-          </button>
-        </form>
-      )}
-    </>
-  );
-}
-
-/* ============================================================
-   Home — status, networks, devices
-   ============================================================ */
-
-function Home({
-  status,
-  logs,
-  busy,
-  run,
-  advanced,
-  onStatus,
-  onCopy,
-}: Common & {
-  status: agent.Status | null;
-  logs: string[];
-  advanced: boolean;
-  onStatus: (s: agent.Status | null) => void;
-  onCopy: (text: string, label?: string) => void;
-}) {
-  const [networks, setNetworks] = useState<agent.Network[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  // The network this machine last joined. Without it the big control has no
-  // target once someone belongs to more than one network, and a button that
-  // does nothing when clicked is worse than no button.
-  const [lastNetwork, setLastNetwork] = usePreference('nexusvpn.lastNetwork', '');
-  const [inviteCode, setInviteCode] = useState('');
-  const [newName, setNewName] = useState('');
-  const [adding, setAdding] = useState(false);
-  // The network whose invite sheet is open, if any.
-  const [sharing, setSharing] = useState<agent.Network | null>(null);
-
-  const reload = useCallback(async () => {
-    setNetworks(await ListNetworks());
-    setLoaded(true);
-  }, []);
-
-  useEffect(() => {
-    reload().catch(() => setLoaded(true));
-  }, [reload]);
-
-  const connected = status !== null;
-  const online = useMemo(
-    () => (status?.peers ?? []).filter((p) => p.quality !== 'Offline').length,
-    [status],
-  );
-  const active = networks.find((n) => n.id === status?.networkId);
-  // One network needs no choosing; otherwise fall back to the last one used.
-  const target =
-    networks.length === 1 ? networks[0] : networks.find((n) => n.id === lastNetwork);
-
-  const connectTo = useCallback(
-    (id: string) =>
-      run(async () => {
-        setLastNetwork(id);
-        await Connect(id);
-      }),
-    [run, setLastNetwork],
-  );
-
-  const toggle = () => {
-    if (connected) {
-      void run(async () => {
-        await Disconnect();
-        onStatus(null);
-      });
-      return;
-    }
-    if (target) void connectTo(target.id);
-  };
-
-  const statusWord = connected ? 'Connected' : busy ? 'Connecting' : 'Not connected';
-  const orbClass = connected ? 'orb connected' : busy ? 'orb busy' : 'orb';
-
-  return (
-    <>
-      <section className="hero">
-        <button
-          className={orbClass}
-          onClick={toggle}
-          disabled={busy || (!connected && !target)}
-          title={!connected && !target ? 'Choose a network below' : undefined}
-        >
-          {connected ? 'Disconnect' : busy ? 'Connecting…' : 'Connect'}
-        </button>
-
-        <div className="status-line">
-          <span className={connected ? 'led good' : busy ? 'led warn' : 'led bad'} />
-          {connected ? active?.name || status.networkName || 'Connected' : statusWord}
-        </div>
-
-        <p className="substatus">
-          {connected
-            ? `Secure · ${online} of ${status.peers?.length ?? 0} devices online`
-            : networks.length === 0
-              ? 'Create a network or join one to get started'
-              : target
-                ? `Connect to ${target.name}`
-                : 'Choose a network below'}
-        </p>
-      </section>
-
-      {/* Networks: hidden entirely when there is exactly one and it's live,
-          because at that point the list is noise. */}
-      {(!connected || networks.length > 1) && (
-        <section className="card">
-          <div className="section-head">
-            <h2>Networks</h2>
-            <button className="text-btn" onClick={() => setAdding((v) => !v)}>
-              {adding ? 'Done' : 'Add'}
-            </button>
-          </div>
-
-          {!loaded ? (
-            <p className="substatus">Loading…</p>
-          ) : networks.length === 0 && !adding ? (
-            <div className="state">
-              <div className="glyph">
-                <Icon name="network" size={26} />
-              </div>
-              <h3>No networks yet</h3>
-              <p>Create one for your own devices, or join a friend&rsquo;s with their invite code.</p>
-              <button className="btn primary" onClick={() => setAdding(true)}>
-                Get started
-              </button>
-            </div>
-          ) : (
-            <div className="rows">
-              {networks.map((n) => {
-                const isActive = status?.networkId === n.id;
-                return (
-                  <div key={n.id} className={isActive ? 'row active' : 'row'}>
-                    <div className="row-icon">
-                      <Icon name="network" />
-                    </div>
-                    <div className="row-main">
-                      <div className="row-title">
-                        {n.name}
-                        {isActive && <span className="badge">Live</span>}
-                      </div>
-                      <div className="row-sub">
-                        {n.deviceCount} device{n.deviceCount === 1 ? '' : 's'}
-                        {advanced && ` · ${n.cidr} · ${n.role}`}
-                      </div>
-                    </div>
-                    {n.inviteCode && (
-                      <button
-                        className="btn"
-                        onClick={() => setSharing(n)}
-                        title={`Invite people to ${n.name}`}
-                      >
-                        Invite
-                      </button>
-                    )}
-                    {isActive ? (
-                      <button
-                        className="btn danger"
-                        disabled={busy}
-                        onClick={() =>
-                          run(async () => {
-                            await Disconnect();
-                            onStatus(null);
-                          })
-                        }
-                      >
-                        Disconnect
-                      </button>
-                    ) : (
-                      <button
-                        className="btn"
-                        disabled={busy || connected}
-                        title={connected ? 'Disconnect first' : undefined}
-                        onClick={() => connectTo(n.id)}
-                      >
-                        Connect
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {adding && (
-            <div className="fade-in" style={{ display: 'grid', gap: 12, marginTop: 14 }}>
-              <form
-                className="field"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void run(async () => {
-                    await JoinNetwork(inviteCode);
-                    setInviteCode('');
-                    setAdding(false);
-                    await reload();
-                  });
-                }}
-              >
-                <label htmlFor="invite">Have an invite code or link?</label>
-                <div className="inline-form">
-                  <input
-                    id="invite"
-                    value={inviteCode}
-                    onChange={(e) => setInviteCode(e.target.value)}
-                    placeholder="K7M2QP"
-                    required
-                  />
-                  <button className="btn primary" type="submit" disabled={busy}>
-                    Join
-                  </button>
-                </div>
-              </form>
-
-              <div className="divider">or</div>
-
-              <form
-                className="field"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void run(async () => {
-                    await CreateNetwork(newName, '', '');
-                    setNewName('');
-                    setAdding(false);
-                    await reload();
-                  });
-                }}
-              >
-                <label htmlFor="netname">Start a new network</label>
-                <div className="inline-form">
-                  <input
-                    id="netname"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="Home Lab"
-                    required
-                  />
-                  <button className="btn" type="submit" disabled={busy}>
-                    Create
-                  </button>
-                </div>
-                {/* No CIDR, no DNS, no routing: the server picks sane
-                    defaults and Advanced can reveal them later. */}
-                <span className="hint">We&rsquo;ll handle the networking details.</span>
-              </form>
-            </div>
-          )}
-        </section>
-      )}
-
-      {sharing && (
-        <Invite network={sharing} onClose={() => setSharing(null)} onCopy={onCopy} />
-      )}
-
-      {connected && (
-        <section className="card fade-in">
-          <div className="section-head">
-            <h2>Devices</h2>
-            <button className="text-btn" onClick={() => onCopy(status.virtualIp, 'Your address copied')}>
-              Copy my address
-            </button>
-          </div>
-
-          {status.peers?.length ? (
-            <div className="rows">
-              {status.peers.map((p) => (
-                <DeviceRow key={p.deviceId} peer={p} advanced={advanced} onCopy={onCopy} />
-              ))}
-            </div>
-          ) : (
-            <div className="state">
-              <div className="glyph">
-                <Icon name="devices" size={26} />
-              </div>
-              <h3>No other devices yet</h3>
-              <p>
-                Install NexusVPN on another computer and sign in with the same account — it will appear
-                here.
-              </p>
-            </div>
-          )}
-
-          {advanced && (
-            <div className="advanced">
-              <dl className="kv">
-                <dt>Your address</dt>
-                <dd>{status.virtualIp}</dd>
-                <dt>Network range</dt>
-                <dd>{status.cidr}</dd>
-                <dt>Interface</dt>
-                <dd>{status.interfaceName}</dd>
-                <dt>NAT type</dt>
-                <dd>{status.natType || 'unknown'}</dd>
-                <dt>Public endpoint</dt>
-                <dd>{status.publicEndpoint || '—'}</dd>
-              </dl>
-              <div className="section-head" style={{ marginTop: 16 }}>
-                <h2>Activity</h2>
-              </div>
-              <pre className="log">{logs.slice(-40).join('\n') || 'Nothing yet.'}</pre>
-            </div>
-          )}
-        </section>
-      )}
-    </>
-  );
-}
-
-/** One device. Addressed by name; the address itself only in Advanced. */
-function DeviceRow({
-  peer,
-  advanced,
-  onCopy,
-}: {
-  peer: agent.Peer;
-  advanced: boolean;
-  onCopy: (text: string, label?: string) => void;
-}) {
-  const quality = peer.quality || 'Offline';
-  const offline = quality === 'Offline';
-
-  return (
-    <div className={offline ? 'row dim' : 'row'}>
-      <div className="row-icon">
-        <Icon name={deviceIcon(peer.os)} />
-      </div>
-      <div className="row-main">
-        <div className="row-title">{peer.deviceName || 'Unnamed device'}</div>
-        <div className="row-sub">
-          {offline
-            ? peer.lastHandshake
-              ? `Last seen ${since(peer.lastHandshake)}`
-              : 'Not connected yet'
-            : advanced
-              ? `${peer.virtualIp} · ${peer.mode} · ${formatBytes(peer.bytesSent)} sent`
-              : describePath(peer.mode)}
-        </div>
-      </div>
-      <span className={`quality ${quality.toLowerCase()}`}>{quality}</span>
-      <button
-        className="icon-btn"
-        onClick={() => onCopy(peer.virtualIp, `${peer.deviceName || 'Device'} address copied`)}
-        title="Copy address"
-        aria-label={`Copy the address for ${peer.deviceName || 'this device'}`}
-      >
-        <Icon name="copy" size={16} />
-      </button>
-    </div>
-  );
-}
-
-/* ============================================================
-   Settings
-   ============================================================ */
-
-function Settings({
-  session,
-  version,
-  busy,
-  run,
-  advanced,
-  onAdvanced,
-  theme,
-  onTheme,
-  onChanged,
-  onClose,
-  onCopy,
-}: Common & {
-  session: agent.Session;
-  version: string;
-  advanced: boolean;
-  onAdvanced: (on: boolean) => void;
-  theme: Theme;
-  onTheme: (t: Theme) => void;
-  onChanged: () => Promise<void>;
-  onClose: () => void;
-  onCopy: (text: string, label?: string) => void;
-}) {
-  const [deviceName, setDeviceName] = useState(session.deviceName);
-  const [publicKey, setPublicKey] = useState(session.publicKey);
-
-  return (
-    <>
-      <div className="section-head">
-        <h2>Settings</h2>
-        <button className="text-btn" onClick={onClose}>
-          Done
-        </button>
-      </div>
-
-      <section className="card" style={{ display: 'grid', gap: 16 }}>
-        <form
-          className="field"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void run(async () => {
-              await SetDeviceName(deviceName);
-              await onChanged();
-            });
-          }}
-        >
-          <label htmlFor="devicename">This device is called</label>
-          <div className="inline-form">
-            <input
-              id="devicename"
-              value={deviceName}
-              onChange={(e) => setDeviceName(e.target.value)}
-              required
-            />
-            <button className="btn" type="submit" disabled={busy}>
-              Save
-            </button>
-          </div>
-          <span className="hint">This is the name other people see.</span>
-        </form>
-
-        <Row label="Appearance">
-          <div style={{ display: 'flex', gap: 6 }}>
-            {(['system', 'light', 'dark'] as Theme[]).map((t) => (
-              <button
-                key={t}
-                className={theme === t ? 'btn primary' : 'btn'}
-                style={{ padding: '6px 12px', fontSize: 12.5 }}
-                onClick={() => onTheme(t)}
-              >
-                {t === 'system' ? 'Auto' : t === 'light' ? 'Light' : 'Dark'}
-              </button>
-            ))}
-          </div>
-        </Row>
-
-        <button className="switch" onClick={() => onAdvanced(!advanced)} aria-pressed={advanced}>
-          <span>
-            <span style={{ fontWeight: 560 }}>Advanced mode</span>
-            <span className="hint" style={{ display: 'block' }}>
-              Show addresses, routes and connection details.
-            </span>
-          </span>
-          <span className={advanced ? 'track on' : 'track'}>
-            <span className="knob" />
-          </span>
-        </button>
-      </section>
-
-      <section className="card">
-        <div className="section-head">
-          <h2>Account</h2>
-        </div>
-        <div className="rows">
-          <div className="row">
-            <div className="row-icon">
-              <Icon name="user" />
-            </div>
-            <div className="row-main">
-              <div className="row-title">{session.email}</div>
-              <div className="row-sub">{session.serverUrl}</div>
-            </div>
-            <button className="btn danger" disabled={busy} onClick={() => run(() => Logout())}>
-              Sign out
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {advanced && (
-        <section className="card fade-in">
-          <div className="section-head">
-            <h2>Device key</h2>
-          </div>
-          <p className="hint" style={{ marginTop: 0 }}>
-            The private half never leaves this device. Rotating disconnects the tunnel and retires the old
-            key everywhere once this device signs back in.
-          </p>
-          <dl className="kv" style={{ margin: '12px 0' }}>
-            <dt>Public key</dt>
-            <dd>{publicKey}</dd>
-          </dl>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn" onClick={() => onCopy(publicKey, 'Public key copied')}>
-              Copy
-            </button>
             <button
-              className="btn danger"
-              disabled={busy}
-              onClick={() => run(async () => setPublicKey(await RotateDeviceKey()))}
+              type="button"
+              onClick={() => setShowServer(true)}
+              className="text-left font-mono text-[10px] tracking-[0.12em] uppercase text-ink-faint hover:text-live"
             >
-              Rotate key
+              use your own server
             </button>
-          </div>
-        </section>
-      )}
+          )}
 
-      <p className="substatus">NexusVPN {version}</p>
-    </>
-  );
-}
-
-function Row({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
-      <span style={{ fontWeight: 560 }}>{label}</span>
-      {children}
+          <button
+            type="submit"
+            disabled={busy}
+            className="mt-1 border border-live/50 bg-live/12 py-2 font-mono text-[11px] font-semibold tracking-[0.16em] uppercase text-live transition-colors hover:bg-live/22 disabled:opacity-40"
+          >
+            {busy ? 'authenticating' : 'sign in'}
+          </button>
+        </div>
+      </motion.form>
     </div>
   );
 }
+
+/* ============================================================
+   Helpers
+   ============================================================ */
+
+/** Ambient dot matrix. Atmosphere only, so it settles when nothing is live. */
+function DotField({ live }: { live: boolean }) {
+  return (
+    <motion.div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0"
+      style={{
+        backgroundImage:
+          'radial-gradient(circle, color-mix(in oklab, var(--color-rest) 50%, transparent) 1px, transparent 1px)',
+        backgroundSize: '18px 18px',
+        maskImage: 'radial-gradient(ellipse at 8% 50%, #000 0%, transparent 65%)',
+        WebkitMaskImage: 'radial-gradient(ellipse at 8% 50%, #000 0%, transparent 65%)',
+      }}
+      animate={{ opacity: live ? [0.3, 0.5, 0.3] : 0.18 }}
+      transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
+    />
+  );
+}
+
+function usePreference(key: string, fallback: string) {
+  const [value, setValue] = useState(() => localStorage.getItem(key) ?? fallback);
+  const update = useCallback(
+    (next: string) => {
+      localStorage.setItem(key, next);
+      setValue(next);
+    },
+    [key],
+  );
+  return [value, update] as const;
+}
+
+/** Turns an error from the Go bridge into something a person can act on. */
+function humanError(err: unknown): { message: string; fix?: string } {
+  const raw = typeof err === 'string' ? err : err instanceof Error ? err.message : String(err);
+  const lower = raw.toLowerCase();
+
+  if (lower.includes('administrator') || lower.includes('root')) {
+    return {
+      message: 'NexusVPN needs permission to create a tunnel interface.',
+      fix: 'Quit and reopen as an administrator. Nothing else on this machine changes.',
+    };
+  }
+  if (lower.includes('exit node') && lower.includes('not supported')) {
+    return {
+      message: 'This machine cannot act as an exit node yet.',
+      fix: 'Routing through someone else works everywhere; only offering to be one is limited.',
+    };
+  }
+  if (lower.includes('default route')) {
+    return {
+      message: 'Routing everything through a peer needs a working internet connection to route around.',
+      fix: 'Reconnect to a network and try again.',
+    };
+  }
+  if (lower.includes('unauthorized') || lower.includes('not signed in') || lower.includes('token')) {
+    return { message: 'Your session has expired.', fix: 'Sign in again to continue.' };
+  }
+  if (lower.includes('invite')) {
+    return { message: 'That invite did not work.', fix: 'Codes can be replaced — ask for a fresh one.' };
+  }
+  if (lower.includes('connection refused') || lower.includes('no such host') || lower.includes('dial')) {
+    return {
+      message: 'Cannot reach your server.',
+      fix: 'Check that you are online and the server address is right.',
+    };
+  }
+  return { message: raw };
+}
+
+function bestLatency(peers: agent.Peer[]): number {
+  const measured = peers.filter((p) => p.latencyMs >= 0).map((p) => p.latencyMs);
+  return measured.length ? Math.min(...measured) : -1;
+}
+
+function fmtLatency(ms: number): string {
+  return ms < 0 ? '—' : `${ms}ms`;
+}
+
+function rate(bytesPerSecond: number): string {
+  if (bytesPerSecond <= 0) return '0B/s';
+  const units = ['B', 'K', 'M', 'G'];
+  const i = Math.min(Math.floor(Math.log(bytesPerSecond) / Math.log(1024)), units.length - 1);
+  return `${(bytesPerSecond / 1024 ** i).toFixed(i === 0 ? 0 : 1)}${units[i]}/s`;
+}
+
+function bytes(n: number): string {
+  if (!n) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1);
+  return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+function elapsed(since: string): string {
+  if (!since) return '—';
+  const secs = Math.max(0, Math.floor((Date.now() - new Date(since).getTime()) / 1000));
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+const PATH_WORD: Record<string, string> = {
+  direct: 'peer to peer',
+  relay: 'through a relay',
+  connecting: 'negotiating',
+  offline: 'not connected',
+};
+
+const CORE_LABEL: Record<Phase, string> = {
+  idle: 'off',
+  handshaking: '···',
+  active: 'on',
+  dropped: 'retry',
+};
+
+const STATE_WORD: Record<Phase, string> = {
+  idle: 'offline',
+  handshaking: 'linking',
+  active: 'online',
+  dropped: 'tunnel lost',
+};
+
+const STATE_COLOR: Record<Phase, string> = {
+  idle: 'var(--color-rest)',
+  handshaking: 'var(--color-work)',
+  active: 'var(--color-live)',
+  dropped: 'var(--color-fail)',
+};

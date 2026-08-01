@@ -1,5 +1,19 @@
 export namespace agent {
 	
+	export class ExitNodeOptions {
+	    killSwitch: boolean;
+	    allowLan: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExitNodeOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.killSwitch = source["killSwitch"];
+	        this.allowLan = source["allowLan"];
+	    }
+	}
 	export class Network {
 	    id: string;
 	    name: string;
@@ -32,6 +46,7 @@ export namespace agent {
 	    deviceId: string;
 	    deviceName: string;
 	    os: string;
+	    exitNode: boolean;
 	    virtualIp: string;
 	    mode: string;
 	    endpoint: string;
@@ -50,6 +65,7 @@ export namespace agent {
 	        this.deviceId = source["deviceId"];
 	        this.deviceName = source["deviceName"];
 	        this.os = source["os"];
+	        this.exitNode = source["exitNode"];
 	        this.virtualIp = source["virtualIp"];
 	        this.mode = source["mode"];
 	        this.endpoint = source["endpoint"];
@@ -82,6 +98,7 @@ export namespace agent {
 	}
 	export class Status {
 	    connected: boolean;
+	    state: string;
 	    networkId: string;
 	    networkName: string;
 	    interfaceName: string;
@@ -90,6 +107,9 @@ export namespace agent {
 	    natType: string;
 	    publicEndpoint: string;
 	    peers: Peer[];
+	    exitNodeId: string;
+	    killSwitchEngaged: boolean;
+	    activeSince: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Status(source);
@@ -98,6 +118,7 @@ export namespace agent {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.connected = source["connected"];
+	        this.state = source["state"];
 	        this.networkId = source["networkId"];
 	        this.networkName = source["networkName"];
 	        this.interfaceName = source["interfaceName"];
@@ -106,6 +127,9 @@ export namespace agent {
 	        this.natType = source["natType"];
 	        this.publicEndpoint = source["publicEndpoint"];
 	        this.peers = this.convertValues(source["peers"], Peer);
+	        this.exitNodeId = source["exitNodeId"];
+	        this.killSwitchEngaged = source["killSwitchEngaged"];
+	        this.activeSince = source["activeSince"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
