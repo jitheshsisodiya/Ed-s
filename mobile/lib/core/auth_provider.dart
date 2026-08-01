@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 import 'api_client.dart';
+import 'pairing.dart';
+import 'server_url.dart';
 import 'app_exception.dart';
 import 'models/models.dart';
 import 'secure_storage.dart';
@@ -75,6 +77,53 @@ class AuthProvider extends ChangeNotifier {
       errorMessage = e.message;
       status = AuthStatus.unauthenticated;
       return false;
+    } finally {
+      busy = false;
+      notifyListeners();
+    }
+  }
+
+  /// Signs in from a code scanned off a screen that is already signed in.
+  ///
+  /// The link carries the server as well as the credential, so this is the
+  /// one way into the app that requires being told nothing: no address, no
+  /// email, no password. The server is stored before the claim is attempted,
+  /// because the claim has to go to that server and nowhere else.
+  ///
+  /// Returns the network the code named, or an empty string if it named none.
+  /// Null means it failed, with [errorMessage] set.
+  Future<String?> pairWithLink(String link) async {
+    final parsed = parsePairingLink(link);
+    if (parsed == null) {
+      errorMessage = 'That is not a NexusVPN pairing code. On your computer, '
+          'open the network and tap the phone icon.';
+      notifyListeners();
+      return null;
+    }
+
+    busy = true;
+    errorMessage = null;
+    notifyListeners();
+    try {
+      await api.setBaseUrl(parsed.serverUrl);
+      final claimed = await api.claimPairing(parsed.token);
+      await _persistTokens(claimed.tokens, claimed.email);
+      status = AuthStatus.authenticated;
+      return claimed.networkId;
+    } on InsecureServerUrl catch (e) {
+      errorMessage = e.message;
+      status = AuthStatus.unauthenticated;
+      return null;
+    } on ApiException catch (e) {
+      // The commonest cause by far is a code that has been used or has run
+      // out, and both look identical from here — deliberately, so a stolen
+      // code cannot be told apart from a fabricated one.
+      errorMessage = e.isNetworkFailure
+          ? e.message
+          : 'That code did not work. It only works once and expires after a '
+              'few minutes — take a fresh one from your computer.';
+      status = AuthStatus.unauthenticated;
+      return null;
     } finally {
       busy = false;
       notifyListeners();

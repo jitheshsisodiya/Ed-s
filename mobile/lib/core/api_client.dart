@@ -258,6 +258,20 @@ class ApiClient {
     return TokenPair.fromJson(json as Map<String, dynamic>);
   }
 
+  /// Spends a pairing code and adopts the session it returns.
+  ///
+  /// Unauthenticated by necessity: the device calling this has no credentials
+  /// yet, which is the entire point of it.
+  Future<ClaimedPairing> claimPairing(String token) async {
+    final json = await _request(
+      'POST',
+      '/auth/pair/claim',
+      auth: false,
+      body: {'token': token},
+    );
+    return ClaimedPairing.fromJson(json as Map<String, dynamic>);
+  }
+
   Future<TokenPair> refresh(String refreshToken) async {
     final json = await _request(
       'POST',

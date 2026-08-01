@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../core/auth_provider.dart';
 import '../core/server_url.dart';
+import '../widgets/pair_scanner.dart';
 import '../widgets/primary_button.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -41,6 +42,25 @@ class _LoginScreenState extends State<LoginScreen> {
     _passwordController.dispose();
     _serverController.dispose();
     super.dispose();
+  }
+
+  /// Opens the camera, and signs in with whatever it reads.
+  ///
+  /// Nothing is typed on this path — not the address, not the account — which
+  /// is why it is offered first. On a computer the code is behind the phone
+  /// icon on any network row.
+  Future<void> _scanToPair() async {
+    final link = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const PairScannerScreen()),
+    );
+    if (link == null || link.isEmpty || !mounted) return;
+
+    final auth = context.read<AuthProvider>();
+    final networkId = await auth.pairWithLink(link);
+    if (!mounted) return;
+    if (networkId != null) {
+      context.go(networkId.isEmpty ? '/networks' : '/networks/$networkId');
+    }
   }
 
   Future<void> _submit() async {
@@ -96,7 +116,35 @@ class _LoginScreenState extends State<LoginScreen> {
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 24),
+
+                    // Offered before the form, because it is the easier path
+                    // and the one that cannot be got wrong: nothing to type,
+                    // and the address comes with the code.
+                    FilledButton.icon(
+                      onPressed: auth.busy ? null : _scanToPair,
+                      icon: const Icon(Icons.qr_code_scanner),
+                      label: const Text('Scan code from your computer'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Expanded(child: Divider()),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text(
+                            'or sign in',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                        const Expanded(child: Divider()),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
                     if (auth.errorMessage != null) ...[
                       Container(
                         padding: const EdgeInsets.all(12),

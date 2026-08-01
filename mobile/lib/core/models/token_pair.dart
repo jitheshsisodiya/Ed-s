@@ -30,3 +30,27 @@ class TokenPair {
 
   bool get hasTokens => accessToken != null && refreshToken != null;
 }
+
+/// What a pairing code buys: a session, plus where the device should go next.
+class ClaimedPairing {
+  const ClaimedPairing({
+    required this.tokens,
+    required this.email,
+    required this.networkId,
+  });
+
+  final TokenPair tokens;
+
+  /// The account the code belonged to. Shown back to the person so they can
+  /// see whose network they have just joined.
+  final String email;
+
+  /// The network the code was made for, empty if it named none.
+  final String networkId;
+
+  factory ClaimedPairing.fromJson(Map<String, dynamic> json) => ClaimedPairing(
+        tokens: TokenPair.fromJson(json),
+        email: (json['email'] as String?) ?? '',
+        networkId: (json['networkId'] as String?) ?? '',
+      );
+}
