@@ -117,12 +117,18 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 		15*time.Minute, 720*time.Hour,
 	)
 	relaySessions := auth.NewRelaySessionManager(secrets.RelaySecret, 5*time.Minute)
+	// Five minutes is long enough to carry a phone across a room and short
+	// enough that a code left on screen stops being one.
+	pairings := auth.NewPairingManager(secrets.PairingSecret, 5*time.Minute)
 
 	audit := usecase.NewAuditRecorder(store.AuditLogs(), logger)
 	authService := usecase.NewAuthService(
 		store.Users(), store.RefreshTokens(), store.PasswordResets(),
 		tokens, auth.NewPasswordHasher(0), auth.NewMFAManager("NexusVPN"),
 		nil, store.Limiter(), audit, time.Hour,
+	)
+	pairingService := usecase.NewPairingService(
+		store.Users(), store.Members(), pairings, authService, audit,
 	)
 	networkService := usecase.NewNetworkService(
 		store.Networks(), store.Members(), store.Users(), audit,
@@ -163,6 +169,7 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 		Logger:    logger,
 		WSHandler: wsHub,
 		Relay:     httptransport.NewRelayHandler(store.Relays(), secrets.RelaySecret),
+		Pairing:   httptransport.NewPairingHandler(pairingService),
 	})
 
 	host := opts.Host
@@ -311,6 +318,7 @@ type secrets struct {
 	AccessSecret  string `json:"accessSecret"`
 	RefreshSecret string `json:"refreshSecret"`
 	RelaySecret   string `json:"relaySecret"`
+	PairingSecret string `json:"pairingSecret"`
 }
 
 func loadOrCreateSecrets(path string) (*secrets, error) {
@@ -326,6 +334,15 @@ func loadOrCreateSecrets(path string) (*secrets, error) {
 				"generate fresh keys, which will sign everyone out: %w", path, err)
 		}
 		if s.AccessSecret != "" && s.RefreshSecret != "" && s.RelaySecret != "" {
+			// Added after the first release, so an existing file has every
+			// other key and not this one. Filling the gap in place keeps the
+			// sessions those other keys signed.
+			if s.PairingSecret == "" {
+				s.PairingSecret = randomSecret()
+				if err := writeSecrets(path, &s); err != nil {
+					return nil, err
+				}
+			}
 			return &s, nil
 		}
 	} else if !os.IsNotExist(err) {
@@ -336,15 +353,23 @@ func loadOrCreateSecrets(path string) (*secrets, error) {
 		AccessSecret:  randomSecret(),
 		RefreshSecret: randomSecret(),
 		RelaySecret:   randomSecret(),
+		PairingSecret: randomSecret(),
 	}
-	out, err := json.MarshalIndent(s, "", "  ")
-	if err != nil {
+	if err := writeSecrets(path, s); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(path, out, 0o600); err != nil {
-		return nil, fmt.Errorf("local: write %s: %w", path, err)
-	}
 	return s, nil
+}
+
+func writeSecrets(path string, s *secrets) error {
+	out, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		return fmt.Errorf("local: write %s: %w", path, err)
+	}
+	return nil
 }
 
 // randomSecret returns 32 bytes of cryptographic randomness, hex encoded.

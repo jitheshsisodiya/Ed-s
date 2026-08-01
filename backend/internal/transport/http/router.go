@@ -18,6 +18,9 @@ type RouterConfig struct {
 	// Relay, when non-nil, mounts the internal relay-fleet endpoints
 	// (register/heartbeat), authenticated by the shared relay secret.
 	Relay *RelayHandler
+	// Pairing, when non-nil, enables enrolling a device from a code shown on
+	// one that is already signed in.
+	Pairing *PairingHandler
 	// WSHandler, when non-nil, is mounted at /api/v1/ws for live presence and
 	// peer updates. It performs its own authentication because browsers can't
 	// set an Authorization header on a WebSocket handshake.
@@ -45,6 +48,15 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	mux.HandleFunc("POST "+p+"/auth/password/reset", cfg.Auth.resetPassword)
 	mux.HandleFunc("GET "+p+"/auth/oauth/{provider}/redirect", cfg.Auth.oauthRedirect)
 	mux.HandleFunc("GET "+p+"/auth/oauth/{provider}/callback", cfg.Auth.oauthCallback)
+
+	// --- Pairing ---
+	// Claiming is public because the device calling it has no credentials
+	// yet; that is what it is for. Starting is not, so a code can only ever
+	// come from a session that already exists.
+	if cfg.Pairing != nil {
+		mux.HandleFunc("POST "+p+"/auth/pair/claim", cfg.Pairing.claim)
+		mux.Handle("POST "+p+"/auth/pair", protect(cfg.Pairing.start))
+	}
 
 	// --- Authenticated auth routes ---
 	mux.Handle("POST "+p+"/auth/mfa/enable", protect(cfg.Auth.enableMFA))

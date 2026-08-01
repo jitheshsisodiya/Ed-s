@@ -159,12 +159,16 @@ type ConnectionLogRepository interface {
 type AuditAction string
 
 const (
-	AuditUserRegister         AuditAction = "user.register"
-	AuditUserLogin            AuditAction = "user.login"
-	AuditUserLoginFailed      AuditAction = "user.login_failed"
-	AuditUserPasswordReset    AuditAction = "user.password_reset"
-	AuditUserMFAEnabled       AuditAction = "user.mfa_enabled"
-	AuditUserMFADisabled      AuditAction = "user.mfa_disabled"
+	AuditUserRegister      AuditAction = "user.register"
+	AuditUserLogin         AuditAction = "user.login"
+	AuditUserLoginFailed   AuditAction = "user.login_failed"
+	AuditUserPasswordReset AuditAction = "user.password_reset"
+	AuditUserMFAEnabled    AuditAction = "user.mfa_enabled"
+	AuditUserMFADisabled   AuditAction = "user.mfa_disabled"
+	// Pairing hands a full session to a device that never saw the password,
+	// so both halves are recorded: who offered one, and who took it up.
+	AuditPairingStarted       AuditAction = "auth.pairing_started"
+	AuditPairingClaimed       AuditAction = "auth.pairing_claimed"
 	AuditNetworkCreate        AuditAction = "network.create"
 	AuditNetworkUpdate        AuditAction = "network.update"
 	AuditNetworkDelete        AuditAction = "network.delete"

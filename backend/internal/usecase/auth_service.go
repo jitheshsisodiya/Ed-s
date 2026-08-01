@@ -204,6 +204,13 @@ func (s *AuthService) Login(ctx context.Context, email, password, mfaCode, ipAdd
 	return result, nil
 }
 
+// IssueTokenPairFor turns a user into a session. Exported so pairing can
+// enrol a device through exactly the same path a password login takes,
+// rather than growing a second way to mint a session.
+func (s *AuthService) IssueTokenPairFor(ctx context.Context, u *domain.User, ipAddress, userAgent string) (*AuthResult, error) {
+	return s.issueTokenPair(ctx, u, ipAddress, userAgent)
+}
+
 func (s *AuthService) issueTokenPair(ctx context.Context, u *domain.User, ipAddress, userAgent string) (*AuthResult, error) {
 	access, _, err := s.tokens.IssueAccessToken(u.ID, u.Email)
 	if err != nil {
