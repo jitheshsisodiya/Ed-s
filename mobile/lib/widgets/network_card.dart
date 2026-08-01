@@ -4,10 +4,19 @@ import '../core/models/models.dart';
 
 /// Summary card for a single network on the networks list screen.
 class NetworkCard extends StatelessWidget {
-  const NetworkCard({super.key, required this.network, required this.onTap});
+  const NetworkCard({
+    super.key,
+    required this.network,
+    required this.onTap,
+    this.advanced = false,
+  });
 
   final Network network;
   final VoidCallback onTap;
+
+  /// Whether to show the network's address range. Off by default: nobody
+  /// picks a network by its CIDR.
+  final bool advanced;
 
   @override
   Widget build(BuildContext context) {
@@ -44,13 +53,15 @@ class NetworkCard extends StatelessWidget {
                       style: theme.textTheme.titleMedium,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      network.cidr,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.outline,
+                    if (advanced) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        network.cidr,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.outline,
+                        ),
                       ),
-                    ),
+                    ],
                     const SizedBox(height: 6),
                     Row(
                       children: [

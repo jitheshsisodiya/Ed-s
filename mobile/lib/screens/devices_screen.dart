@@ -246,11 +246,8 @@ class _DevicesScreenState extends State<DevicesScreen> {
                         final isSelf = d.publicKey == data.myPublicKey;
                         return DeviceTile(
                           device: d,
-                          subtitleOverride: [
-                            if (d.virtualIp != null) d.virtualIp!,
-                            if (d.latencyMs != null) '${d.latencyMs}ms',
-                            if (isSelf) 'this device',
-                          ].join(' · '),
+                          advanced: context.watch<Preferences>().advanced,
+                          subtitleOverride: isSelf ? 'This device' : null,
                           trailing: IconButton(
                             icon: const Icon(Icons.delete_outline),
                             tooltip: 'Remove device',

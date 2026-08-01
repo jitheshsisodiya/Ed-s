@@ -4,6 +4,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 
 import '../core/app_exception.dart';
+import '../core/app_settings.dart';
 import '../core/auth_provider.dart';
 import '../core/models/models.dart';
 import '../widgets/error_view.dart';
@@ -317,6 +318,7 @@ class _NetworksScreenState extends State<NetworksScreen> {
                 final n = networks[index];
                 return NetworkCard(
                   network: n,
+                  advanced: context.watch<Preferences>().advanced,
                   onTap: () => context.push('/networks/${n.id}'),
                 );
               },

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import 'core/app_settings.dart';
 import 'core/auth_provider.dart';
 import 'core/router.dart';
 import 'core/vpn_controller.dart';
@@ -16,6 +17,7 @@ class NexusVpnApp extends StatefulWidget {
 class _NexusVpnAppState extends State<NexusVpnApp> {
   late final AuthProvider _authProvider;
   late final VpnController _vpnController;
+  late final Preferences _preferences;
   late final GoRouter _router;
 
   @override
@@ -23,14 +25,17 @@ class _NexusVpnAppState extends State<NexusVpnApp> {
     super.initState();
     _authProvider = AuthProvider();
     _vpnController = VpnController(api: _authProvider.api);
+    _preferences = Preferences();
     _router = buildRouter(_authProvider);
     _authProvider.bootstrap();
+    _preferences.load();
   }
 
   @override
   void dispose() {
     _vpnController.dispose();
     _authProvider.dispose();
+    _preferences.dispose();
     super.dispose();
   }
 
@@ -40,14 +45,17 @@ class _NexusVpnAppState extends State<NexusVpnApp> {
       providers: [
         ChangeNotifierProvider<AuthProvider>.value(value: _authProvider),
         ChangeNotifierProvider<VpnController>.value(value: _vpnController),
+        ChangeNotifierProvider<Preferences>.value(value: _preferences),
       ],
-      child: MaterialApp.router(
-        title: 'NexusVPN',
-        debugShowCheckedModeBanner: false,
-        theme: _buildTheme(Brightness.light),
-        darkTheme: _buildTheme(Brightness.dark),
-        themeMode: ThemeMode.system,
-        routerConfig: _router,
+      child: Consumer<Preferences>(
+        builder: (context, prefs, _) => MaterialApp.router(
+          title: 'NexusVPN',
+          debugShowCheckedModeBanner: false,
+          theme: _buildTheme(Brightness.light),
+          darkTheme: _buildTheme(Brightness.dark),
+          themeMode: prefs.themeMode,
+          routerConfig: _router,
+        ),
       ),
     );
   }

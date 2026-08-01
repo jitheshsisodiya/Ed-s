@@ -271,6 +271,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final prefs = context.watch<Preferences>();
 
     if (_loading) {
       return Scaffold(
@@ -303,6 +304,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'Appearance',
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: SegmentedButton<ThemeMode>(
+                  segments: const [
+                    ButtonSegment(value: ThemeMode.system, label: Text('Auto')),
+                    ButtonSegment(value: ThemeMode.light, label: Text('Light')),
+                    ButtonSegment(value: ThemeMode.dark, label: Text('Dark')),
+                  ],
+                  selected: {prefs.themeMode},
+                  onSelectionChanged: (s) => prefs.setThemeMode(s.first),
+                ),
+              ),
+              const Divider(height: 1),
+              SwitchListTile(
+                secondary: const Icon(Icons.tune),
+                title: const Text('Advanced mode'),
+                subtitle: const Text(
+                  'Show addresses, routes and connection details.',
+                ),
+                value: prefs.advanced,
+                onChanged: prefs.setAdvanced,
+              ),
+            ],
+          ),
+          // Everything below is only meaningful to someone running their own
+          // deployment or debugging one. Hiding it is the difference between
+          // a settings screen and a control panel.
+          if (prefs.advanced) ...[
           const SizedBox(height: 16),
           _SectionCard(
             title: 'Server',
@@ -371,6 +404,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
+          ],
           const SizedBox(height: 16),
           _SectionCard(
             title: 'About',

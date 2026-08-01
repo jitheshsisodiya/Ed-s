@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'auth_provider.dart';
 import '../screens/devices_screen.dart';
 import '../screens/forgot_password_screen.dart';
+import '../screens/home_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/mfa_screen.dart';
 import '../screens/network_detail_screen.dart';
@@ -33,7 +34,7 @@ GoRouter buildRouter(AuthProvider auth) {
           return null;
         case AuthStatus.authenticated:
           if (loc == '/' || onAuthPages || loc == '/mfa') {
-            return '/networks';
+            return '/home';
           }
           return null;
       }
@@ -56,6 +57,7 @@ GoRouter buildRouter(AuthProvider auth) {
         path: '/forgot-password',
         builder: (context, state) => const ForgotPasswordScreen(),
       ),
+      GoRoute(path: '/home', builder: (context, state) => const HomeScreen()),
       GoRoute(
         path: '/networks',
         builder: (context, state) => const NetworksScreen(),

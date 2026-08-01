@@ -47,13 +47,34 @@ Point the app at your control plane on the sign-in screen, or change
 
 ```
 lib/core/          api_client (REST + refresh-on-401), models, secure storage,
-                   auth and VPN controllers, router
-lib/screens/       login, register, MFA, forgot password, networks,
+                   auth and VPN controllers, preferences, connection quality,
+                   router
+lib/screens/       home, login, register, MFA, forgot password, networks,
                    network detail, devices, settings
 lib/widgets/       shared UI pieces
-test/              model (de)serialization and API client tests
+test/              model (de)serialization, API client, connection quality
+                   and widget tests
 android/ ios/      platform projects, including VPN permissions/entitlements
 ```
+
+## What the app shows
+
+The app opens on **home**: one round control that connects and disconnects,
+the network it acts on, and the other devices you can reach. With a single
+network there is nothing to choose; with several, the control targets the one
+you used last, so it is never a button that does nothing when tapped.
+
+Connection health is a word, not a number — **Excellent**, **Good**,
+**Limited** or **Offline**. The rule that produces it lives in
+`lib/core/connection_quality.dart` and is a deliberate copy of
+`describeQuality` in `client/agent/agent.go`; the two are pinned to the same
+test table so a connection that reads "Good" on the desktop cannot read
+"Excellent" on the phone.
+
+Virtual addresses, network ranges, NAT types, the server URL and the device
+key are all behind **Advanced mode** in Settings. They are exactly right for
+someone running their own deployment and exactly wrong as the first thing
+anyone else sees.
 
 ## Security
 

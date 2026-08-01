@@ -298,7 +298,8 @@ class _HeaderCard extends StatelessWidget {
               spacing: 16,
               runSpacing: 4,
               children: [
-                _MetaChip(icon: Icons.route_outlined, label: network.cidr),
+                if (context.watch<Preferences>().advanced)
+                  _MetaChip(icon: Icons.route_outlined, label: network.cidr),
                 _MetaChip(
                   icon: Icons.people_outline,
                   label: '${network.memberCount} members',
@@ -406,22 +407,26 @@ class _ConnectCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Icon(Icons.lan_outlined, size: 16, color: theme.colorScheme.outline),
-                    const SizedBox(width: 4),
-                    Text(
-                      selfDevice!.virtualIp ?? 'No IP assigned yet',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    if (selfDevice!.latencyMs != null) ...[
-                      const SizedBox(width: 12),
-                      Icon(Icons.speed_outlined, size: 16, color: theme.colorScheme.outline),
+                if (context.watch<Preferences>().advanced)
+                  Row(
+                    children: [
+                      Icon(Icons.lan_outlined,
+                          size: 16, color: theme.colorScheme.outline),
                       const SizedBox(width: 4),
-                      Text('${selfDevice!.latencyMs} ms', style: theme.textTheme.bodySmall),
+                      Text(
+                        selfDevice!.virtualIp ?? 'No IP assigned yet',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      if (selfDevice!.latencyMs != null) ...[
+                        const SizedBox(width: 12),
+                        Icon(Icons.speed_outlined,
+                            size: 16, color: theme.colorScheme.outline),
+                        const SizedBox(width: 4),
+                        Text('${selfDevice!.latencyMs} ms',
+                            style: theme.textTheme.bodySmall),
+                      ],
                     ],
-                  ],
-                ),
+                  ),
                 if (vpn.lastError != null && displayState == AppVpnState.error) ...[
                   const SizedBox(height: 8),
                   Text(
@@ -652,7 +657,12 @@ class _DevicesCard extends StatelessWidget {
                 child: Text('No devices registered on this network yet.'),
               )
             else
-              ...preview.map((d) => DeviceTile(device: d)),
+              ...preview.map(
+                (d) => DeviceTile(
+                  device: d,
+                  advanced: context.watch<Preferences>().advanced,
+                ),
+              ),
           ],
         ),
       ),
