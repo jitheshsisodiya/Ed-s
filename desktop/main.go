@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -15,10 +16,17 @@ func main() {
 	// Create an instance of the app structure
 	app := NewApp()
 
+	// Asked only to stop, so no window should appear on the way through.
+	quitting := QuitRequested(os.Args[1:])
+
 	// Create application with options
 	// The tray runs alongside Wails on its own goroutine. It is started
-	// before Run because Run blocks for the lifetime of the app.
-	go startTray(app)
+	// before Run because Run blocks for the lifetime of the app. Not when
+	// this process exists only to ask another one to stop: it would put a
+	// second icon in the notification area for the moment it takes.
+	if !quitting {
+		go startTray(app)
+	}
 
 	err := wails.Run(&options.App{
 		Title:     "NexusVPN",
@@ -39,6 +47,7 @@ func main() {
 		// them. Quit lives in the tray menu.
 		OnBeforeClose:     app.beforeClose,
 		HideWindowOnClose: true,
+		StartHidden:       quitting,
 		// One instance, always. Two would race for the same ports, the same
 		// config and the same tunnel adapter, and the second would fail in a
 		// way nobody could diagnose. Launching again — from the Start menu,

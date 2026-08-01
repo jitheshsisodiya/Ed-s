@@ -90,6 +90,24 @@ FunctionEnd
 Section
     !insertmacro wails.setShellContext
 
+    # NexusVPN lives in the notification area and keeps running after its
+    # window is closed, so an upgrade arrives to find Windows holding its own
+    # executable open — "Error opening file for writing", with no hint that
+    # the cause is the app the person is upgrading.
+    #
+    # --quit reaches the running copy through its single-instance lock and it
+    # shuts down properly, releasing the tunnel and stopping the control
+    # plane. taskkill is the fallback for a copy too wedged to answer; it is
+    # second because a forced kill leaves anything the kill switch had armed
+    # still armed, with nothing left running to take it down.
+    IfFileExists "$INSTDIR\${PRODUCT_EXECUTABLE}" 0 nexusvpn_stopped_install
+        Exec '"$INSTDIR\${PRODUCT_EXECUTABLE}" --quit'
+        Sleep 2500
+        nsExec::Exec 'taskkill /F /IM ${PRODUCT_EXECUTABLE}'
+        Pop $0
+        Sleep 700
+    nexusvpn_stopped_install:
+
     !insertmacro wails.webview2runtime
 
     SetOutPath $INSTDIR
@@ -108,10 +126,21 @@ SectionEnd
 Section "uninstall"
     !insertmacro wails.setShellContext
 
+    # Same reason as the installer: the files cannot be removed while the app
+    # is still holding them.
+    IfFileExists "$INSTDIR\${PRODUCT_EXECUTABLE}" 0 nexusvpn_stopped_uninstall
+        Exec '"$INSTDIR\${PRODUCT_EXECUTABLE}" --quit'
+        Sleep 2500
+        nsExec::Exec 'taskkill /F /IM ${PRODUCT_EXECUTABLE}'
+        Pop $0
+        Sleep 700
+    nexusvpn_stopped_uninstall:
+
     # Remove the launch-at-sign-in task if the app registered one. Left
     # behind, it points at a program that no longer exists and Windows
     # reports the failure at every sign-in.
     nsExec::Exec 'schtasks /Delete /TN "NexusVPN" /F'
+    Pop $0
 
     RMDir /r "$AppData\${PRODUCT_EXECUTABLE}" # Remove the WebView2 DataPath
 

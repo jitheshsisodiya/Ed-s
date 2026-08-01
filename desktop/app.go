@@ -62,12 +62,37 @@ func (a *App) quit() {
 }
 
 // onSecondInstance runs in the copy already going when somebody launches
-// NexusVPN again — from a shortcut, or by opening an invite link.
+// NexusVPN again — from a shortcut, by opening an invite link, or by an
+// installer asking the running copy to stand down.
 func (a *App) onSecondInstance(data options.SecondInstanceData) {
+	if QuitRequested(data.Args) {
+		a.quit()
+		return
+	}
 	if code := inviteFromArgs(data.Args); code != "" {
 		a.offerInvite(code)
 	}
 	a.ShowWindow()
+}
+
+// QuitRequested reports whether a command line asks NexusVPN to stop.
+//
+// An upgrade cannot overwrite an executable Windows still has open, and this
+// app is built to stay open — closing its window leaves it in the
+// notification area, serving. So the installer runs the copy it is about to
+// replace with this flag; the single-instance lock hands the flag to the one
+// already running, which then shuts down the way the Quit menu item would,
+// releasing the tunnel and stopping the control plane on its way out.
+//
+// Killing the process instead would leave whatever the kill switch had armed
+// still armed, with nothing left running to take it down.
+func QuitRequested(args []string) bool {
+	for _, arg := range args {
+		if arg == "--quit" || arg == "-quit" || arg == "/quit" {
+			return true
+		}
+	}
+	return false
 }
 
 // inviteFromArgs finds an invite handed over by the operating system.
@@ -219,6 +244,15 @@ func NewApp() *App { return &App{} }
 // initialises the engine.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// Nothing was running to hand the flag to, so there is nothing to stop.
+	// Started and stopped without ever showing a window, which is what an
+	// installer running this on a machine where the app is already closed
+	// should look like.
+	if QuitRequested(os.Args[1:]) {
+		a.quit()
+		return
+	}
 
 	// An invite link is often what launches the app in the first place, so
 	// the code is picked up before anything else can fail and swallow it.
