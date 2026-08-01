@@ -76,10 +76,10 @@ OutFile "..\..\bin\${INFO_PROJECTNAME}-${ARCH}-installer.exe" # Name of the inst
   !if "${WAILS_INSTALL_SCOPE}" == "user"
     InstallDir "$LOCALAPPDATA\Programs\${INFO_PRODUCTNAME}"
   !else
-    InstallDir "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}"
+    InstallDir "$PROGRAMFILES64\${INFO_PRODUCTNAME}"
   !endif
 !else
-  InstallDir "$PROGRAMFILES64\${INFO_COMPANYNAME}\${INFO_PRODUCTNAME}"
+  InstallDir "$PROGRAMFILES64\${INFO_PRODUCTNAME}"
 !endif # Default installing folder ($PROGRAMFILES is Program Files folder).
 ShowInstDetails show # This will always show the installation details.
 
@@ -107,6 +107,11 @@ SectionEnd
 
 Section "uninstall"
     !insertmacro wails.setShellContext
+
+    # Remove the launch-at-sign-in task if the app registered one. Left
+    # behind, it points at a program that no longer exists and Windows
+    # reports the failure at every sign-in.
+    nsExec::Exec 'schtasks /Delete /TN "NexusVPN" /F'
 
     RMDir /r "$AppData\${PRODUCT_EXECUTABLE}" # Remove the WebView2 DataPath
 

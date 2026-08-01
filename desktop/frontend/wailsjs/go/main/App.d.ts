@@ -47,4 +47,6 @@ export function ShowWindow():Promise<void>;
 
 export function StopUsingExitNode():Promise<void>;
 
+export function TakePendingInvite():Promise<string>;
+
 export function UseExitNode(arg1:string,arg2:agent.ExitNodeOptions):Promise<void>;

@@ -31,6 +31,7 @@ import {
   SetDeviceName,
   SetStartWithSystem,
   StopUsingExitNode,
+  TakePendingInvite,
   UseExitNode,
 } from '../wailsjs/go/main/App';
 import { EventsOff, EventsOn } from '../wailsjs/runtime/runtime';
@@ -58,7 +59,7 @@ import './theme.css';
 
 type Modal =
   | { kind: 'create' }
-  | { kind: 'join' }
+  | { kind: 'join'; code?: string }
   | { kind: 'settings' }
   | { kind: 'rename' }
   | { kind: 'properties'; peer: agent.Peer }
@@ -105,10 +106,23 @@ export default function App() {
   useEffect(() => {
     EventsOn('tunnel:log', (line: string) => setLogs((p) => [...p.slice(-300), line]));
     EventsOn('tunnel:disconnected', () => setStatus(null));
+    // An invite link opens the join dialog with the code filled in — it never
+    // joins on its own. A link somebody sent is a suggestion, and you should
+    // see which network it is before you are on it.
+    EventsOn('invite:offered', (code: string) => setModal({ kind: 'join', code }));
     return () => {
       EventsOff('tunnel:log');
       EventsOff('tunnel:disconnected');
+      EventsOff('invite:offered');
     };
+  }, []);
+
+  // A link that launched the app fires its event before this window exists,
+  // so the code waits on the Go side until something asks for it.
+  useEffect(() => {
+    TakePendingInvite()
+      .then((code) => code && setModal({ kind: 'join', code }))
+      .catch(() => undefined);
   }, []);
 
   // One poll feeds the readouts and the traces, so a figure in the list and
@@ -406,6 +420,7 @@ export default function App() {
       {modal?.kind === 'join' && (
         <JoinDialog
           busy={busy}
+          initialCode={modal.code}
           onClose={() => setModal(null)}
           onJoin={(code) =>
             run(async () => {
@@ -589,14 +604,16 @@ function CreateDialog({
 
 function JoinDialog({
   busy,
+  initialCode,
   onClose,
   onJoin,
 }: {
   busy: boolean;
+  initialCode?: string;
   onClose: () => void;
   onJoin: (code: string) => void;
 }) {
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState(initialCode ?? '');
   return (
     <Dialog
       title="Join network"

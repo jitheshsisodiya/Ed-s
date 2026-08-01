@@ -90,6 +90,10 @@ export function StopUsingExitNode() {
   return window['go']['main']['App']['StopUsingExitNode']();
 }
 
+export function TakePendingInvite() {
+  return window['go']['main']['App']['TakePendingInvite']();
+}
+
 export function UseExitNode(arg1, arg2) {
   return window['go']['main']['App']['UseExitNode'](arg1, arg2);
 }

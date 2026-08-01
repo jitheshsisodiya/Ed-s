@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
+	"github.com/wailsapp/wails/v2/pkg/options"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/jitheshsisodiya/Ed-s/backend/local"
@@ -32,14 +35,81 @@ type App struct {
 	// this machine is a client of somebody else's.
 	server *local.Server
 
+	// mu guards the two fields below, which the tray goroutine and the
+	// window's own thread both touch.
+	mu sync.Mutex
+
 	// quitting distinguishes "the user chose Quit" from "the user clicked
 	// the window's X". Only the first should stop the process: closing the
 	// window on a machine that hosts the control plane must not take
 	// everyone else's network down.
 	quitting bool
 
+	// pendingInvite holds a code from a nexusvpn:// link, waiting for the
+	// UI to be ready to act on it.
+	pendingInvite string
+
 	// trayPoll fans status changes out to the tray.
 	trayPoll chan struct{}
+}
+
+// quit marks this as a real exit rather than a window close.
+func (a *App) quit() {
+	a.mu.Lock()
+	a.quitting = true
+	a.mu.Unlock()
+	wailsruntime.Quit(a.ctx)
+}
+
+// onSecondInstance runs in the copy already going when somebody launches
+// NexusVPN again — from a shortcut, or by opening an invite link.
+func (a *App) onSecondInstance(data options.SecondInstanceData) {
+	if code := inviteFromArgs(data.Args); code != "" {
+		a.offerInvite(code)
+	}
+	a.ShowWindow()
+}
+
+// inviteFromArgs finds an invite handed over by the operating system.
+//
+// Only nexusvpn: arguments count. A bare invite code is a valid thing to
+// paste into the join dialog but not something to act on because it appeared
+// on a command line — that would make any stray argument look like an
+// instruction to join a network.
+func inviteFromArgs(args []string) string {
+	for _, arg := range args {
+		if strings.HasPrefix(strings.ToLower(arg), "nexusvpn:") {
+			if code := agent.ParseInviteCode(arg); code != "" {
+				return code
+			}
+		}
+	}
+	return ""
+}
+
+// offerInvite hands a code to the UI, which opens the join dialog with it
+// filled in. Nothing joins on its own: a link someone sent is a suggestion,
+// not a command, and the person clicking it should see which network it is
+// before they are on it.
+func (a *App) offerInvite(code string) {
+	a.mu.Lock()
+	a.pendingInvite = code
+	a.mu.Unlock()
+	a.logf("invite link received")
+	if a.ctx != nil {
+		wailsruntime.EventsEmit(a.ctx, "invite:offered", code)
+	}
+}
+
+// TakePendingInvite returns a waiting invite code and forgets it, so a
+// reload does not re-offer something already dismissed. The UI calls this on
+// startup, when the event above would have fired before it was listening.
+func (a *App) TakePendingInvite() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	code := a.pendingInvite
+	a.pendingInvite = ""
+	return code
 }
 
 // logf sends a line to the engine log the Diagnostics tab shows. Safe before
@@ -74,7 +144,10 @@ func (a *App) HideWindow() {
 // every VPN client does and what this one has to do: the app may be serving
 // other machines, and closing a window is not a request to disconnect them.
 func (a *App) beforeClose(context.Context) bool {
-	if a.quitting {
+	a.mu.Lock()
+	quitting := a.quitting
+	a.mu.Unlock()
+	if quitting {
 		return false
 	}
 	a.HideWindow()
@@ -146,6 +219,12 @@ func NewApp() *App { return &App{} }
 // initialises the engine.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// An invite link is often what launches the app in the first place, so
+	// the code is picked up before anything else can fail and swallow it.
+	if code := inviteFromArgs(os.Args[1:]); code != "" {
+		a.offerInvite(code)
+	}
 
 	ag, err := agent.New()
 	if err != nil {

@@ -39,6 +39,15 @@ func main() {
 		// them. Quit lives in the tray menu.
 		OnBeforeClose:     app.beforeClose,
 		HideWindowOnClose: true,
+		// One instance, always. Two would race for the same ports, the same
+		// config and the same tunnel adapter, and the second would fail in a
+		// way nobody could diagnose. Launching again — from the Start menu,
+		// a desktop shortcut, or an invite link — hands its arguments to the
+		// copy already running and brings its window back instead.
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId:               "com.nexusvpn.desktop",
+			OnSecondInstanceLaunch: app.onSecondInstance,
+		},
 		Bind: []interface{}{
 			app,
 		},

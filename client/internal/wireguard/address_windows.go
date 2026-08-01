@@ -5,7 +5,8 @@ package wireguard
 import (
 	"fmt"
 	"net"
-	"os/exec"
+
+	"github.com/jitheshsisodiya/Ed-s/client/internal/winexec"
 )
 
 // AssignAddress assigns the tunnel's virtual IP and brings the Wintun
@@ -44,7 +45,7 @@ func (d *Device) AddRoute(network *net.IPNet) error {
 }
 
 func runPowerShell(script string) ([]byte, error) {
-	return exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).CombinedOutput()
+	return winexec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).CombinedOutput()
 }
 
 func maskSize(n *net.IPNet) int {

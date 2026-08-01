@@ -4,8 +4,9 @@ package killswitch
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
+
+	"github.com/jitheshsisodiya/Ed-s/client/internal/winexec"
 )
 
 // wfpSwitch drives Windows Firewall through the NetSecurity cmdlets.
@@ -126,11 +127,11 @@ func (wfpSwitch) Engaged() (bool, error) {
 }
 
 func powershell(script string) ([]byte, error) {
-	return exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).Output()
+	return winexec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).Output()
 }
 
 func powershellRun(script string) error {
-	out, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).CombinedOutput()
+	out, err := winexec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("killswitch: powershell: %w: %s", err, strings.TrimSpace(string(out)))
 	}

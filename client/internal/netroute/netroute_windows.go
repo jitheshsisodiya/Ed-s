@@ -6,8 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"os/exec"
 	"strings"
+
+	"github.com/jitheshsisodiya/Ed-s/client/internal/winexec"
 )
 
 // windowsRouter drives the PowerShell NetTCPIP cmdlets rather than the
@@ -99,7 +100,7 @@ func (windowsRouter) ReleaseDefault(iface string) error {
 }
 
 func powershell(script string) ([]byte, error) {
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
+	cmd := winexec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
@@ -108,7 +109,7 @@ func powershell(script string) ([]byte, error) {
 }
 
 func powershellRun(script string) error {
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
+	cmd := winexec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("netroute: powershell: %w: %s", err, strings.TrimSpace(string(out)))

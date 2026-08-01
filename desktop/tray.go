@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"github.com/energye/systray"
-	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/jitheshsisodiya/Ed-s/client/agent"
 )
@@ -78,12 +77,18 @@ func (t *tray) onReady() {
 	t.address.Click(func() { go t.onCopyAddress() })
 	show.Click(func() { t.app.ShowWindow() })
 
+	// Left click brings the window back, which is what everybody tries
+	// first and what every other tray application does. Without these the
+	// library leaves left click unhandled entirely — only right click does
+	// anything — so an app that hid itself on close cannot be reopened at
+	// all, which is a trap rather than a missing convenience.
+	systray.SetOnClick(func(systray.IMenu) { t.app.ShowWindow() })
+	systray.SetOnDClick(func(systray.IMenu) { t.app.ShowWindow() })
+	systray.SetOnRClick(func(menu systray.IMenu) { _ = menu.ShowMenu() })
+
 	// Quitting is the only way out that stops the control plane, so it is
 	// the only one that ends the process. Closing the window hides it.
-	quit.Click(func() {
-		t.app.quitting = true
-		wailsruntime.Quit(t.app.ctx)
-	})
+	quit.Click(func() { t.app.quit() })
 
 	go t.watch()
 }
