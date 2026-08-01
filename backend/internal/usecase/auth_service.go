@@ -59,6 +59,53 @@ type AuthService struct {
 	resetTTL  time.Duration
 }
 
+// Rate-limit budgets for the unauthenticated endpoints.
+//
+// Every one of these is keyed twice: once by the thing being attacked and
+// once by the address doing the attacking. A per-account limit alone stops
+// somebody grinding one password list against one account and does nothing
+// about the same list sprayed one attempt each across ten thousand
+// accounts, which is the attack that actually happens. A per-address limit
+// alone punishes everyone behind one office NAT for one careless colleague.
+// Both together bound each shape of abuse without the other's false
+// positives.
+const (
+	// A person who has forgotten which password they used gets a handful of
+	// tries; a script does not.
+	loginPerAccount = 10
+	// Deliberately looser than the per-account budget: a household, an
+	// office or a mobile carrier NAT is one address with many legitimate
+	// people behind it.
+	loginPerAddress = 30
+
+	// Account creation is a write nobody needs to repeat quickly.
+	registerPerAddress = 5
+
+	// A reset mail is sent to a victim's inbox and creates a row in the
+	// reset table, so an unbounded endpoint is both a mail-flooding tool
+	// and a way to grind that table.
+	resetPerAccount = 3
+	resetPerAddress = 10
+
+	// The window every budget above is counted over.
+	authRateWindow = time.Minute
+)
+
+// allow reports whether an action fits inside its budget. A limiter that
+// errors is treated as permissive: a Redis outage must not lock every user
+// out of their account, and the failure is already visible in the logs and
+// metrics for that dependency.
+func (s *AuthService) allow(ctx context.Context, key string, limit int) bool {
+	if s.limiter == nil {
+		return true
+	}
+	allowed, err := s.limiter.Allow(ctx, key, limit, authRateWindow)
+	if err != nil {
+		return true
+	}
+	return allowed
+}
+
 // NewAuthService builds an AuthService.
 func NewAuthService(
 	users domain.UserRepository,
@@ -80,7 +127,11 @@ func NewAuthService(
 }
 
 // Register creates a new user account with a bcrypt-hashed password.
-func (s *AuthService) Register(ctx context.Context, email, password, displayName string) (*domain.User, error) {
+func (s *AuthService) Register(ctx context.Context, email, password, displayName string, ipAddress string) (*domain.User, error) {
+	if !s.allow(ctx, "register-ip:"+ipAddress, registerPerAddress) {
+		return nil, domain.ErrForbidden
+	}
+
 	existing, err := s.users.GetByEmail(ctx, email)
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return nil, err
@@ -112,11 +163,9 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 // Login authenticates a user by email/password (+ optional MFA code) and
 // issues a new access/refresh token pair.
 func (s *AuthService) Login(ctx context.Context, email, password, mfaCode, ipAddress, userAgent string) (*AuthResult, error) {
-	if s.limiter != nil {
-		allowed, err := s.limiter.Allow(ctx, "login:"+email, 10, time.Minute)
-		if err == nil && !allowed {
-			return nil, domain.ErrForbidden
-		}
+	if !s.allow(ctx, "login:"+email, loginPerAccount) ||
+		!s.allow(ctx, "login-ip:"+ipAddress, loginPerAddress) {
+		return nil, domain.ErrForbidden
 	}
 
 	u, err := s.users.GetByEmail(ctx, email)
@@ -271,7 +320,16 @@ func (s *AuthService) VerifyMFA(ctx context.Context, userID uuid.UUID, code stri
 
 // ForgotPassword issues a single-use password reset token if the account
 // exists. It never reveals whether the email is registered.
-func (s *AuthService) ForgotPassword(ctx context.Context, email string) (rawToken string, err error) {
+func (s *AuthService) ForgotPassword(ctx context.Context, email, ipAddress string) (rawToken string, err error) {
+	// Silently succeeding when over budget keeps this endpoint's answer
+	// constant. Returning an error here would tell an attacker which
+	// addresses are worth grinding, which is the one thing this endpoint
+	// deliberately never reveals.
+	if !s.allow(ctx, "reset:"+email, resetPerAccount) ||
+		!s.allow(ctx, "reset-ip:"+ipAddress, resetPerAddress) {
+		return "", nil
+	}
+
 	u, err := s.users.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {

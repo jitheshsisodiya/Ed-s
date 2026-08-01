@@ -22,6 +22,12 @@ native VPN extension:
   issues that entitlement to a paid Apple Developer account, and it must be
   provisioned for a real bundle identifier.
 
+  The Xcode project is **not committed**, because one generated without ever
+  being opened in Xcode would be a project nobody has built. Run
+  `flutter create --platforms=ios .` from `mobile/` to generate it, then add
+  the extension target; `kNetworkExtensionBundleId` in
+  `lib/core/vpn_controller.dart` is the identifier it must match.
+
 So: the app builds, analyzes and tests cleanly here, and the tunnel
 configuration it produces is correct — but **the tunnel has not been brought
 up on a physical device in this repository**, because doing so requires
@@ -54,7 +60,8 @@ lib/screens/       home, login, register, MFA, forgot password, networks,
 lib/widgets/       shared UI pieces
 test/              model (de)serialization, API client, connection quality
                    and widget tests
-android/ ios/      platform projects, including VPN permissions/entitlements
+android/           platform project: VPN, camera and notification
+                   permissions, and the backup opt-out below
 ```
 
 ## What the app shows
@@ -82,9 +89,19 @@ anyone else sees.
   only the public key is registered with the control plane.
 - Tokens and the private key live in `flutter_secure_storage`, which is
   backed by the Android Keystore and the iOS Keychain. The keychain item uses
-  `first_unlock` accessibility, so the VPN extension can read it after a
-  reboot while still requiring the device to have been unlocked once, and it
-  is never synchronised to iCloud.
+  `first_unlock_this_device`, so the VPN extension can read it after a reboot
+  while still requiring the device to have been unlocked once — and the
+  `ThisDeviceOnly` half keeps it out of iCloud Keychain *and* out of
+  encrypted device backups.
+- **Nothing this app stores is backed up or transferred.** The Android
+  manifest sets `allowBackup="false"` and excludes every domain from both
+  cloud backup and device transfer (`res/xml/data_extraction_rules.xml`).
+  The encryption key lives in the Keystore and is never part of a backup, so
+  a restored copy is ciphertext nobody can read anyway; shipping it would
+  gain a user nothing and put an encrypted copy of their credentials
+  somewhere they did not ask for it. A restored phone signs in again and
+  generates a fresh device key — which is also what you want, since a device
+  key that can be cloned onto a second handset identifies two devices.
 - The API client refreshes an expired access token exactly once per failure,
   de-duplicating concurrent refreshes, and signals session expiry so the app
   returns to sign-in rather than retrying forever.

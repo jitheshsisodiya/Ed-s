@@ -664,12 +664,39 @@ func (r *fakeAuditRepo) waitForAction(t *testing.T, want domain.AuditAction) {
 	t.Fatalf("audit action %q was never recorded (recorded: %v)", want, r.actions())
 }
 
+// fakeRateLimiter counts per key and enforces the budget it is handed, so
+// tests exercise the real bucketing rather than a constant. Setting allow to
+// false denies everything, which is how the "limiter says no" path is
+// reached without having to spend a budget first.
 type fakeRateLimiter struct {
 	allow bool
+	err   error
+
+	mu    sync.Mutex
+	calls map[string]int
 }
 
-func (f *fakeRateLimiter) Allow(_ context.Context, _ string, _ int, _ time.Duration) (bool, error) {
-	return f.allow, nil
+func (f *fakeRateLimiter) Allow(_ context.Context, key string, limit int, _ time.Duration) (bool, error) {
+	if f.err != nil {
+		return false, f.err
+	}
+	if !f.allow {
+		return false, nil
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.calls == nil {
+		f.calls = map[string]int{}
+	}
+	f.calls[key]++
+	return f.calls[key] <= limit, nil
+}
+
+// count reports how many times a key has been charged.
+func (f *fakeRateLimiter) count(key string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls[key]
 }
 
 type fakePresence struct {

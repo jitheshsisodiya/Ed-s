@@ -72,11 +72,23 @@ func writeDomainError(w http.ResponseWriter, err error) {
 	}
 }
 
+// maxRequestBody bounds how much of a request body will be read.
+//
+// Every request this API accepts is a small JSON object — the largest is a
+// network create with a description — so a mebibyte is generous by three
+// orders of magnitude. Without a bound, an unauthenticated POST carrying a
+// gigabyte-long string field is a gigabyte of allocation per connection, and
+// the endpoints that need this most are exactly the ones that run before any
+// credential has been checked.
+const maxRequestBody = 1 << 20
+
 func decodeJSON(r *http.Request, v any) error {
 	if r.Body == nil {
 		return errors.New("empty body")
 	}
-	dec := json.NewDecoder(r.Body)
+	// MaxBytesReader also caps what the server will read off the wire, so an
+	// oversized body is refused rather than drained.
+	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, maxRequestBody))
 	dec.DisallowUnknownFields()
 	return dec.Decode(v)
 }

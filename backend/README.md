@@ -100,6 +100,21 @@ allocation, ICE rendezvous, and the `StreamPeerUpdates` server stream).
   login failures return a single generic error whether or not the account
   exists. In non-production environments the reset token is echoed in the
   response so the flow is testable without SMTP.
+- **Rate limiting**: `/auth/login`, `/auth/register` and
+  `/auth/password/forgot` are each bounded twice — once by the thing being
+  attacked (account or e-mail) and once by the address doing the attacking.
+  A per-account limit alone does nothing about one password sprayed a single
+  time across ten thousand accounts; a per-address limit alone punishes a
+  whole office NAT for one careless colleague. The budgets are named
+  constants at the top of `internal/usecase/auth_service.go`. A limiter
+  outage **fails open**: Redis being down must not lock every user out of
+  their own account, and that failure is already visible in the metrics for
+  Redis itself. The forgot-password refusal is silent — returning an error
+  would tell an attacker which addresses are worth grinding, which is the one
+  thing that endpoint exists to never reveal.
+- **Request bodies** are capped at 1 MiB. Every request this API accepts is a
+  small JSON object, and the endpoints that most need the bound are the ones
+  that run before any credential has been checked.
 - **RBAC**: every network operation re-checks membership and role
   (`owner` > `admin` > `member`) in the use-case layer, not just in middleware.
 - **Horizontal scaling**: no per-instance session state. Presence, peer-event

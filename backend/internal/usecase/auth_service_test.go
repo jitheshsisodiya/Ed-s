@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -12,6 +13,10 @@ import (
 	"github.com/jitheshsisodiya/Ed-s/backend/internal/domain"
 )
 
+// testIP stands in for the caller's address. Anything keyed by address is
+// keyed by this, so a test that means to exhaust an address budget can.
+const testIP = "198.51.100.7"
+
 type authFixture struct {
 	svc     *AuthService
 	users   *fakeUserRepo
@@ -19,6 +24,7 @@ type authFixture struct {
 	resets  *fakeResetRepo
 	audit   *fakeAuditRepo
 	tokens  *auth.TokenManager
+	limiter *fakeRateLimiter
 }
 
 func newAuthFixture(t *testing.T, mfaCode string) *authFixture {
@@ -29,19 +35,23 @@ func newAuthFixture(t *testing.T, mfaCode string) *authFixture {
 	auditRepo := &fakeAuditRepo{}
 	tokens := auth.NewTokenManager("access-secret-for-tests", "refresh-secret-for-tests", "nexusvpn-test", 15*time.Minute, 24*time.Hour)
 
+	limiter := &fakeRateLimiter{allow: true}
 	svc := NewAuthService(
 		users, refresh, resets, tokens, realHasher(),
-		stubMFA{validCode: mfaCode}, nil, &fakeRateLimiter{allow: true},
+		stubMFA{validCode: mfaCode}, nil, limiter,
 		NewAuditRecorder(auditRepo, zap.NewNop()), time.Hour,
 	)
-	return &authFixture{svc: svc, users: users, refresh: refresh, resets: resets, audit: auditRepo, tokens: tokens}
+	return &authFixture{
+		svc: svc, users: users, refresh: refresh, resets: resets,
+		audit: auditRepo, tokens: tokens, limiter: limiter,
+	}
 }
 
 func TestRegisterThenLogin(t *testing.T) {
 	f := newAuthFixture(t, "")
 	ctx := t.Context()
 
-	u, err := f.svc.Register(ctx, "alice@example.com", "correct-horse-battery", "Alice")
+	u, err := f.svc.Register(ctx, "alice@example.com", "correct-horse-battery", "Alice", testIP)
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -70,10 +80,10 @@ func TestRegisterRejectsDuplicateEmail(t *testing.T) {
 	f := newAuthFixture(t, "")
 	ctx := t.Context()
 
-	if _, err := f.svc.Register(ctx, "dup@example.com", "correct-horse-battery", "First"); err != nil {
+	if _, err := f.svc.Register(ctx, "dup@example.com", "correct-horse-battery", "First", testIP); err != nil {
 		t.Fatalf("first register: %v", err)
 	}
-	_, err := f.svc.Register(ctx, "dup@example.com", "another-password-here", "Second")
+	_, err := f.svc.Register(ctx, "dup@example.com", "another-password-here", "Second", testIP)
 	if !errors.Is(err, domain.ErrAlreadyExists) {
 		t.Fatalf("expected ErrAlreadyExists, got %v", err)
 	}
@@ -83,7 +93,7 @@ func TestLoginWrongPasswordIsRejectedAndAudited(t *testing.T) {
 	f := newAuthFixture(t, "")
 	ctx := t.Context()
 
-	if _, err := f.svc.Register(ctx, "bob@example.com", "correct-horse-battery", "Bob"); err != nil {
+	if _, err := f.svc.Register(ctx, "bob@example.com", "correct-horse-battery", "Bob", testIP); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
@@ -124,7 +134,7 @@ func TestMFARequiredThenAccepted(t *testing.T) {
 	f := newAuthFixture(t, "123456")
 	ctx := t.Context()
 
-	u, err := f.svc.Register(ctx, "mfa@example.com", "correct-horse-battery", "MFA User")
+	u, err := f.svc.Register(ctx, "mfa@example.com", "correct-horse-battery", "MFA User", testIP)
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -168,7 +178,7 @@ func TestRefreshRotatesAndRevokesOldToken(t *testing.T) {
 	f := newAuthFixture(t, "")
 	ctx := t.Context()
 
-	if _, err := f.svc.Register(ctx, "rot@example.com", "correct-horse-battery", "Rot"); err != nil {
+	if _, err := f.svc.Register(ctx, "rot@example.com", "correct-horse-battery", "Rot", testIP); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	first, err := f.svc.Login(ctx, "rot@example.com", "correct-horse-battery", "", "", "")
@@ -202,7 +212,7 @@ func TestLogoutRevokesRefreshToken(t *testing.T) {
 	f := newAuthFixture(t, "")
 	ctx := t.Context()
 
-	if _, err := f.svc.Register(ctx, "out@example.com", "correct-horse-battery", "Out"); err != nil {
+	if _, err := f.svc.Register(ctx, "out@example.com", "correct-horse-battery", "Out", testIP); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	result, err := f.svc.Login(ctx, "out@example.com", "correct-horse-battery", "", "", "")
@@ -222,7 +232,7 @@ func TestPasswordResetFlow(t *testing.T) {
 	f := newAuthFixture(t, "")
 	ctx := t.Context()
 
-	if _, err := f.svc.Register(ctx, "reset@example.com", "correct-horse-battery", "Reset"); err != nil {
+	if _, err := f.svc.Register(ctx, "reset@example.com", "correct-horse-battery", "Reset", testIP); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	// Issue a refresh token that should be revoked by the reset.
@@ -231,7 +241,7 @@ func TestPasswordResetFlow(t *testing.T) {
 		t.Fatalf("login: %v", err)
 	}
 
-	token, err := f.svc.ForgotPassword(ctx, "reset@example.com")
+	token, err := f.svc.ForgotPassword(ctx, "reset@example.com", testIP)
 	if err != nil {
 		t.Fatalf("forgot password: %v", err)
 	}
@@ -265,7 +275,7 @@ func TestPasswordResetFlow(t *testing.T) {
 func TestForgotPasswordUnknownEmailIsSilent(t *testing.T) {
 	f := newAuthFixture(t, "")
 
-	token, err := f.svc.ForgotPassword(t.Context(), "nobody@example.com")
+	token, err := f.svc.ForgotPassword(t.Context(), "nobody@example.com", testIP)
 	if err != nil {
 		t.Fatalf("expected no error for unknown email, got %v", err)
 	}
@@ -278,7 +288,7 @@ func TestExpiredRefreshTokenRejected(t *testing.T) {
 	f := newAuthFixture(t, "")
 	ctx := t.Context()
 
-	u, err := f.svc.Register(ctx, "exp@example.com", "correct-horse-battery", "Exp")
+	u, err := f.svc.Register(ctx, "exp@example.com", "correct-horse-battery", "Exp", testIP)
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -299,5 +309,102 @@ func TestExpiredRefreshTokenRejected(t *testing.T) {
 
 	if _, err := f.svc.Refresh(ctx, raw, "", ""); !errors.Is(err, domain.ErrTokenExpired) {
 		t.Fatalf("expected ErrTokenExpired, got %v", err)
+	}
+}
+
+// A per-account limit alone lets an attacker spray one password across many
+// accounts unbounded, which is the attack that actually happens. The
+// per-address budget is what stops it.
+func TestLoginIsLimitedPerAddressAcrossDifferentAccounts(t *testing.T) {
+	f := newAuthFixture(t, "")
+	ctx := t.Context()
+
+	var lastErr error
+	for i := 0; i < loginPerAddress+1; i++ {
+		// A different account every time, so the per-account budget is
+		// never the thing doing the stopping.
+		email := fmt.Sprintf("victim%d@example.com", i)
+		_, lastErr = f.svc.Login(ctx, email, "guess", "", testIP, "ua")
+	}
+
+	if !errors.Is(lastErr, domain.ErrForbidden) {
+		t.Fatalf("spraying %d accounts from one address was not stopped: %v",
+			loginPerAddress+1, lastErr)
+	}
+	if got := f.limiter.count("login-ip:" + testIP); got != loginPerAddress+1 {
+		t.Fatalf("address budget charged %d times, want %d", got, loginPerAddress+1)
+	}
+}
+
+// Someone else's careless colleague must not lock a whole office out, so
+// the address budget is looser than the account one.
+func TestAddressBudgetIsLooserThanAccountBudget(t *testing.T) {
+	if loginPerAddress <= loginPerAccount {
+		t.Fatalf("per-address budget %d must exceed per-account budget %d",
+			loginPerAddress, loginPerAccount)
+	}
+}
+
+func TestRegisterIsLimitedPerAddress(t *testing.T) {
+	f := newAuthFixture(t, "")
+	ctx := t.Context()
+
+	for i := 0; i < registerPerAddress; i++ {
+		email := fmt.Sprintf("new%d@example.com", i)
+		if _, err := f.svc.Register(ctx, email, "correct-horse-battery", "New", testIP); err != nil {
+			t.Fatalf("registration %d should have been allowed: %v", i, err)
+		}
+	}
+
+	_, err := f.svc.Register(ctx, "toomany@example.com", "correct-horse-battery", "Too Many", testIP)
+	if !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden past the budget, got %v", err)
+	}
+	if _, err := f.users.GetByEmail(ctx, "toomany@example.com"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatal("a rejected registration must not have created the account")
+	}
+}
+
+// Reset mail lands in somebody else's inbox, so an unbounded endpoint is a
+// mail-flooding tool. Crucially the refusal must be silent: an error would
+// tell an attacker which addresses are worth grinding, which is exactly what
+// this endpoint refuses to reveal.
+func TestForgotPasswordIsLimitedWithoutRevealingAnything(t *testing.T) {
+	f := newAuthFixture(t, "")
+	ctx := t.Context()
+
+	if _, err := f.svc.Register(ctx, "target@example.com", "correct-horse-battery", "Target", testIP); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	issued := 0
+	for i := 0; i < resetPerAccount+3; i++ {
+		token, err := f.svc.ForgotPassword(ctx, "target@example.com", testIP)
+		if err != nil {
+			t.Fatalf("attempt %d returned an error, which leaks that the "+
+				"account exists: %v", i, err)
+		}
+		if token != "" {
+			issued++
+		}
+	}
+
+	if issued != resetPerAccount {
+		t.Fatalf("issued %d reset tokens, want %d", issued, resetPerAccount)
+	}
+}
+
+// Redis falling over must not lock every user out of their own account.
+func TestLimiterFailureFailsOpen(t *testing.T) {
+	f := newAuthFixture(t, "")
+	f.limiter.err = errors.New("redis is down")
+	ctx := t.Context()
+
+	// Registration still has to work, and so does the login that follows.
+	if _, err := f.svc.Register(ctx, "open@example.com", "correct-horse-battery", "Open", testIP); err != nil {
+		t.Fatalf("a limiter outage locked out registration: %v", err)
+	}
+	if _, err := f.svc.Login(ctx, "open@example.com", "correct-horse-battery", "", testIP, "ua"); err != nil {
+		t.Fatalf("a limiter outage locked out login: %v", err)
 	}
 }

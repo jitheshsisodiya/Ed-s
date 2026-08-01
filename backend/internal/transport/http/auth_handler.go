@@ -47,7 +47,7 @@ func (h *AuthHandler) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u, err := h.auth.Register(r.Context(), req.Email, req.Password, req.DisplayName)
+	u, err := h.auth.Register(r.Context(), req.Email, req.Password, req.DisplayName, clientIP(r))
 	if err != nil {
 		writeDomainError(w, err)
 		return
@@ -151,7 +151,7 @@ func (h *AuthHandler) forgotPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.auth.ForgotPassword(r.Context(), strings.TrimSpace(strings.ToLower(req.Email)))
+	token, err := h.auth.ForgotPassword(r.Context(), strings.TrimSpace(strings.ToLower(req.Email)), clientIP(r))
 	if err != nil {
 		// Deliberately do not surface repository errors here — the response
 		// must not reveal whether the account exists.

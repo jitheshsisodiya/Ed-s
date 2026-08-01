@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -372,5 +373,40 @@ func TestClientIPFallsBackToRemoteAddr(t *testing.T) {
 
 	if got := clientIP(req); got != "198.51.100.4" {
 		t.Fatalf("clientIP = %q, want 198.51.100.4", got)
+	}
+}
+
+// An unauthenticated endpoint that reads an unbounded body is a memory
+// exhaustion primitive: one connection carrying a gigabyte-long string field
+// costs a gigabyte of allocation before any credential has been checked.
+func TestDecodeJSONRefusesAnOversizedBody(t *testing.T) {
+	var body bytes.Buffer
+	body.WriteString(`{"email":"`)
+	body.Write(bytes.Repeat([]byte("a"), maxRequestBody+1024))
+	body.WriteString(`"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/login", &body)
+	var dst struct {
+		Email string `json:"email"`
+	}
+
+	if err := decodeJSON(req, &dst); err == nil {
+		t.Fatal("a body past the limit was accepted")
+	}
+}
+
+// The limit must not be so tight that ordinary requests trip it.
+func TestDecodeJSONAcceptsAnOrdinaryBody(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/auth/login",
+		strings.NewReader(`{"email":"alice@example.com"}`))
+	var dst struct {
+		Email string `json:"email"`
+	}
+
+	if err := decodeJSON(req, &dst); err != nil {
+		t.Fatalf("an ordinary body was rejected: %v", err)
+	}
+	if dst.Email != "alice@example.com" {
+		t.Fatalf("Email = %q, want alice@example.com", dst.Email)
 	}
 }

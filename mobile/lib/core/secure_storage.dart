@@ -10,12 +10,21 @@ class SecureStorage {
 
   // Android: the plugin encrypts with its own ciphers backed by the
   // Keystore. (The old encryptedSharedPreferences option is deprecated and
-  // ignored — Google deprecated the Jetpack Security library it used.)
-  // iOS: first_unlock keeps the keychain item readable by the VPN extension
-  // after a reboot, while still requiring the device to have been unlocked
-  // once, and it is never synchronised to iCloud.
+  // ignored — Google deprecated the Jetpack Security library it used.) The
+  // manifest additionally opts out of cloud backup and device transfer, so
+  // the encrypted blob never leaves the handset it was written on.
+  //
+  // iOS: first_unlock_this_device keeps the keychain item readable by the
+  // VPN extension after a reboot — it only needs the device to have been
+  // unlocked once — while the ThisDeviceOnly half keeps it out of iCloud
+  // Keychain *and* out of encrypted device backups. That last part is the
+  // point: a device key that can be restored onto a second handset is a
+  // device key that identifies two devices. Restoring a phone means signing
+  // in again and generating a fresh key, which is the correct outcome.
   static const _storage = FlutterSecureStorage(
-    iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
   );
 
   static const _kAccessToken = 'nexusvpn.access_token';

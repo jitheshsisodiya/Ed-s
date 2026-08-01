@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ backup and device-transfer rules.
+
+  Nothing this app stores is worth moving to another device. The tokens and
+  the WireGuard private key are encrypted with a key that lives in the
+  Android Keystore and is never part of a backup, so a restored copy is
+  ciphertext nobody can read — including its owner. Shipping it anyway
+  gains a user nothing and puts an encrypted copy of their credentials
+  somewhere they did not ask for it.
+
+  A restored phone therefore signs in again and generates a fresh device
+  key, which is also the behaviour you want: a device identity that can be
+  cloned onto a second handset is not an identity.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

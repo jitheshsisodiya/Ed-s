@@ -8,7 +8,7 @@ the REST API described in [`api/openapi.yaml`](../api/openapi.yaml).
 ## Stack
 
 - [Vite](https://vitejs.dev/) + React 18 + TypeScript (strict mode)
-- [react-router-dom](https://reactrouter.com/) v6 for routing/route guards
+- [react-router-dom](https://reactrouter.com/) v7 for routing/route guards
 - [@tanstack/react-query](https://tanstack.com/query) for server-state
   caching, background refetch, and mutations
 - Tailwind CSS (class-based dark mode, respects `prefers-color-scheme` by
@@ -95,6 +95,27 @@ npm run lint      # eslint . (typescript-eslint, react-hooks, react-refresh)
 - **Pagination**: none of the `GET` list endpoints in the OpenAPI spec take
   pagination parameters, so list/log endpoints are fetched in full and
   paginated client-side by the reusable `DataTable` component.
+
+## Security notes
+
+- **No source maps are shipped.** Anyone who can load the admin panel can
+  load whatever sits beside it, and the annotated source of the console that
+  manages every network is not something to hand out. Build with
+  `npm run build -- --sourcemap` when you need them locally.
+- Response headers are set by nginx from
+  [`security-headers.conf`](./security-headers.conf): a strict CSP,
+  `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, a
+  `Referrer-Policy` and a `Permissions-Policy`.
+- `npm audit --omit=dev --audit-level=high` runs in CI, so a vulnerable
+  dependency that actually reaches the browser fails the build. Dev-only
+  tooling is excluded deliberately: a vulnerable test runner cannot be
+  reached by anyone loading the shipped bundle, and failing the build on one
+  teaches people to ignore the job.
+- One advisory is knowingly open: react-router's *RSC Mode CSRF Bypass*
+  affects React Server Components with server actions. This panel is a
+  client-side SPA using `<BrowserRouter>` — there is no RSC and no server
+  action, so there is nothing for it to bypass. It has no fixed release yet;
+  revisit when one lands.
 
 ## Docker / deployment
 
