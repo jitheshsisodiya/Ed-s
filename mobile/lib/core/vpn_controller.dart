@@ -11,6 +11,7 @@ import 'package:wireguard_flutter/wireguard_flutter_platform_interface.dart';
 import 'api_client.dart';
 import 'app_exception.dart';
 import 'models/models.dart';
+import 'remembered_peers.dart';
 import 'secure_storage.dart';
 
 /// Simplified, UI-facing connection state. Collapses the plugin's more
@@ -214,7 +215,34 @@ class VpnController extends ChangeNotifier {
     try {
       await _ensureInitialized();
       final keys = await ensureKeypair();
-      final peers = await api.getPeers(selfDevice.id);
+
+      // The peer list, from the control plane if it can be reached and from
+      // memory if it cannot.
+      //
+      // A phone away from home can still reach its peers; what it may not be
+      // able to reach is the machine that hands out the list, which needs an
+      // inbound connection the router at home may refuse. Insisting on a
+      // fresh list is what turns "away from home" into "does not work".
+      List<Device> peers;
+      try {
+        peers = await api.getPeers(selfDevice.id);
+        await RememberedPeers.save(selfDevice.id, peers);
+      } on ApiException catch (e) {
+        // Only when nothing answered. A control plane that replied and said
+        // no has given an answer — this device removed, this session over —
+        // and connecting on an old list would be carrying on regardless.
+        if (!e.isNetworkFailure) rethrow;
+
+        peers = await RememberedPeers.load(selfDevice.id);
+        if (peers.isEmpty) rethrow;
+
+        final age = RememberedPeers.describe(
+          await RememberedPeers.age(selfDevice.id),
+        );
+        lastError = 'Could not reach the machine running NexusVPN, so this '
+            'connection uses what the phone already knew ($age). Machines '
+            'added since will not appear until it can be reached again.';
+      }
       lastPeers = peers;
       _activeNetwork = network;
       _activeDevice = selfDevice;
