@@ -102,7 +102,7 @@ class ApiClient {
     } on TimeoutException {
       throw ApiException.timeout();
     } catch (e) {
-      throw ApiException.network(e);
+      throw ApiException.network(e, host: uri.host);
     }
 
     if (resp.statusCode == 401 && auth && retryOn401) {
@@ -115,7 +115,7 @@ class ApiClient {
         } on TimeoutException {
           throw ApiException.timeout();
         } catch (e) {
-          throw ApiException.network(e);
+          throw ApiException.network(e, host: uri.host);
         }
       } else {
         onSessionExpired?.call();

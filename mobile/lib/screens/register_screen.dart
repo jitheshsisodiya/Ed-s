@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../core/auth_provider.dart';
+import '../core/server_url.dart';
 import '../widgets/primary_button.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -18,9 +19,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
+  final _serverController = TextEditingController();
   bool _obscure = true;
   bool _submitting = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    // This screen is a first-run entry point in its own right — somebody with
+    // no account arrives here, not at sign-in — so it has to be able to say
+    // which server the account is being created on. Without the field it
+    // silently used whatever was stored, which on a fresh install is nothing.
+    context.read<AuthProvider>().api.baseUrl.then((url) {
+      if (mounted) _serverController.text = url;
+    });
+  }
 
   @override
   void dispose() {
@@ -28,6 +42,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmController.dispose();
+    _serverController.dispose();
     super.dispose();
   }
 
@@ -38,6 +53,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _error = null;
     });
     final auth = context.read<AuthProvider>();
+    await auth.api.setBaseUrl(_serverController.text);
+    if (!mounted) return;
     final user = await auth.register(
       email: _emailController.text.trim(),
       password: _passwordController.text,
@@ -92,6 +109,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                       const SizedBox(height: 16),
                     ],
+                    TextFormField(
+                      controller: _serverController,
+                      keyboardType: TextInputType.url,
+                      autocorrect: false,
+                      decoration: const InputDecoration(
+                        labelText: 'Server',
+                        hintText: 'http://192.168.1.20:8080',
+                        helperText: 'The machine running NexusVPN',
+                        prefixIcon: Icon(Icons.dns_outlined),
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (v) {
+                        try {
+                          validateServerUrl(v ?? '');
+                          return null;
+                        } on InsecureServerUrl catch (e) {
+                          return e.message;
+                        } on FormatException catch (e) {
+                          return e.message;
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
                     TextFormField(
                       controller: _nameController,
                       decoration: const InputDecoration(

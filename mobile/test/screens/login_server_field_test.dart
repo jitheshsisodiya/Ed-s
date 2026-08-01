@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:nexusvpn/core/api_client.dart';
 import 'package:nexusvpn/core/auth_provider.dart';
 import 'package:nexusvpn/screens/login_screen.dart';
+import 'package:nexusvpn/screens/register_screen.dart';
 import 'package:provider/provider.dart';
 
 /// The sign-in screen must be able to answer "which server?" itself.
@@ -34,6 +35,29 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  testWidgets('the server address can be set from Create account', (tester) async {
+    final auth = AuthProvider(apiClient: ApiClient());
+    await tester.pumpWidget(
+      ChangeNotifierProvider<AuthProvider>.value(
+        value: auth,
+        child: MaterialApp.router(
+          routerConfig: GoRouter(
+            routes: [
+              GoRoute(path: '/', builder: (_, _) => const RegisterScreen()),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.widgetWithText(TextFormField, 'Server'),
+      findsOneWidget,
+      reason: 'somebody with no account arrives here, not at sign-in',
+    );
+  });
 
   testWidgets('the server address can be set from sign-in', (tester) async {
     final auth = AuthProvider(apiClient: ApiClient());
