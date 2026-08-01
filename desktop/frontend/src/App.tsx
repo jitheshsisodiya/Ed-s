@@ -904,8 +904,22 @@ function Reach({ server }: { server: main.LocalServer | null }) {
           Your router refused, or cannot be asked. Most routers call this{' '}
           <strong className="text-ink">UPnP</strong> or{' '}
           <strong className="text-ink">NAT-PMP</strong>, and many ship with it
-          switched off. Turning it on there &mdash; or forwarding ports 8080 and
-          9090 to this machine by hand &mdash; does the same job.
+          switched off. Turning it on there does the same job. Forwarding by
+          hand works too &mdash; to this machine, at {server.lanUrl || 'its address above'}:
+        </p>
+      )}
+      {remote && !server.publicUrl && server.running && (
+        <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-faint">
+          <strong className="text-ink">TCP 8080</strong> to sign in,{' '}
+          <strong className="text-ink">TCP 9090</strong> for the tunnel to
+          negotiate{relay ? ', ' : '. '}
+          {relay && (
+            <>
+              and <strong className="text-ink">UDP 51821</strong> for relaying.{' '}
+            </>
+          )}
+          Peer-to-peer traffic needs none of them &mdash; it finds its own way
+          through.
         </p>
       )}
     </>
