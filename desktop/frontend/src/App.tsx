@@ -167,17 +167,49 @@ export default function App() {
     window.setTimeout(() => setToast(''), 1900);
   }, []);
 
-  const run = useCallback(async (fn: () => Promise<void>) => {
-    setBusy(true);
-    setError(null);
-    try {
-      await fn();
-    } catch (err) {
-      setError(humanError(err));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  /// Drops everything the signed-in screen was showing. Networks and peers
+  /// belong to an account; leaving them on screen after that account is gone
+  /// shows a list nothing can act on.
+  const forgetSession = useCallback(async () => {
+    setStatus(null);
+    setNetworks([]);
+    setHistory([]);
+    setModal(null);
+    previous.current = null;
+    await refreshSession().catch(() => undefined);
+  }, [refreshSession]);
+
+  const run = useCallback(
+    async (fn: () => Promise<void>) => {
+      setBusy(true);
+      setError(null);
+      try {
+        await fn();
+      } catch (err) {
+        const raw = typeof err === 'string' ? err : String(err);
+        setError(humanError(err));
+        // An expired session has to take the app back to sign-in. Showing the
+        // message over the signed-in screen leaves somebody reading "sign in
+        // again" on the one screen that has no way to do it.
+        if (isSessionExpired(raw)) {
+          await Logout().catch(() => undefined);
+          await forgetSession();
+        }
+      } finally {
+        setBusy(false);
+      }
+    },
+    [forgetSession],
+  );
+
+  const signOut = useCallback(
+    () =>
+      void run(async () => {
+        await Logout();
+        await forgetSession();
+      }),
+    [run, forgetSession],
+  );
 
   const copy = useCallback(
     (text: string, label = 'Copied') => {
@@ -275,7 +307,7 @@ export default function App() {
                 item('Change name…', () => setModal({ kind: 'rename' })),
                 item('Settings…', () => setModal({ kind: 'settings' })),
                 separator,
-                item('Sign out', () => void run(() => Logout())),
+                item('Sign out', signOut),
                 item('Exit', () => Quit()),
               ],
             },
@@ -1304,6 +1336,26 @@ function usePreference(key: string, fallback: string) {
   return [value, update] as const;
 }
 
+/**
+ * Whether an error means the stored session is no longer good for anything.
+ *
+ * Separate from humanError because it drives behaviour, not wording: the app
+ * has to leave the signed-in screen, and matching on a rendered sentence to
+ * decide that would break the moment the sentence changed.
+ */
+function isSessionExpired(raw: string): boolean {
+  const lower = raw.toLowerCase();
+  if (lower.includes('invalid credentials') || lower.includes('incorrect password')) {
+    return false;
+  }
+  return (
+    lower.includes('unauthorized') ||
+    lower.includes('not signed in') ||
+    lower.includes('session expired') ||
+    lower.includes('token')
+  );
+}
+
 /** Turns an error from the Go bridge into something a person can act on. */
 function humanError(err: unknown): { message: string; fix?: string } {
   const raw = typeof err === 'string' ? err : err instanceof Error ? err.message : String(err);
@@ -1327,7 +1379,13 @@ function humanError(err: unknown): { message: string; fix?: string } {
       fix: 'Reconnect to a network and try again.',
     };
   }
-  if (lower.includes('unauthorized') || lower.includes('not signed in') || lower.includes('token')) {
+  if (lower.includes('invalid credentials') || lower.includes('incorrect password')) {
+    return {
+      message: 'That email and password do not match an account on this server.',
+      fix: 'Check the server address too — accounts belong to one server, not all of them.',
+    };
+  }
+  if (isSessionExpired(raw)) {
     return { message: 'Your session has expired.', fix: 'Sign in again to continue.' };
   }
   if (lower.includes('invite')) {

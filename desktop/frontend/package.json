@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "node e2e/session.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
