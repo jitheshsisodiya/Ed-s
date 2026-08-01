@@ -197,7 +197,14 @@ export default function App() {
 
   if (!session.loggedIn) {
     return (
-      <Access busy={busy} run={run} onDone={refreshSession} defaultServer={session.serverUrl} />
+      <Access
+        busy={busy}
+        run={run}
+        error={error}
+        onDismissError={() => setError(null)}
+        onDone={refreshSession}
+        defaultServer={session.serverUrl}
+      />
     );
   }
 
@@ -863,16 +870,24 @@ function SettingsDialog({
 function Access({
   busy,
   run,
+  error,
+  onDismissError,
   onDone,
   defaultServer,
 }: {
   busy: boolean;
   run: (fn: () => Promise<void>) => Promise<void>;
+  error: { message: string; fix?: string } | null;
+  onDismissError: () => void;
   onDone: () => Promise<void>;
   defaultServer: string;
 }) {
-  const [server, setServer] = useState(defaultServer);
-  const [showServer, setShowServer] = useState(false);
+  // A fresh install has no server, and you cannot sign in without one. So
+  // the field is shown, not hidden behind a disclosure: collapsing a
+  // mandatory field guarantees the first attempt fails, and the previous
+  // build failed it silently.
+  const [server, setServer] = useState(defaultServer || DEFAULT_SERVER);
+  const [showServer, setShowServer] = useState(defaultServer === '');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mfa, setMfa] = useState('');
@@ -910,6 +925,31 @@ function Access({
           Your machines, on one network, wherever they are.
         </p>
 
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-4 flex items-start gap-2.5 border border-fail/45 bg-fail/10 p-2.5"
+              role="alert"
+            >
+              <AlertTriangle size={13} className="mt-0.5 shrink-0 text-fail" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[12px] text-ink">{error.message}</p>
+                {error.fix && <p className="mt-0.5 text-[11.5px] text-ink-dim">{error.fix}</p>}
+              </div>
+              <button
+                onClick={onDismissError}
+                className="text-ink-faint hover:text-ink"
+                aria-label="Dismiss"
+              >
+                <X size={12} />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="grid gap-3">
           <label className="grid gap-1">
             <span className="eyebrow">Email</span>
@@ -935,16 +975,25 @@ function Access({
 
           {showServer ? (
             <label className="grid gap-1">
-              <span className="eyebrow">Your server</span>
-              <Input value={server} onChange={(e) => setServer(e.target.value)} required />
+              <span className="eyebrow">Server</span>
+              <Input
+                value={server}
+                onChange={(e) => setServer(e.target.value)}
+                placeholder={DEFAULT_SERVER}
+                required
+              />
+              <span className="text-[11px] leading-relaxed text-ink-faint">
+                Where your NexusVPN server is running. If you started it on this machine with
+                Docker, the address above is correct.
+              </span>
             </label>
           ) : (
             <button
               type="button"
               onClick={() => setShowServer(true)}
-              className="text-left font-mono text-[10px] tracking-[0.12em] uppercase text-ink-faint hover:text-live"
+              className="justify-self-start border border-deck-line-bright px-2 py-1 font-mono text-[10px] tracking-[0.12em] uppercase text-ink-dim transition-colors hover:border-live hover:text-live"
             >
-              use your own server
+              change server
             </button>
           )}
 
@@ -1072,6 +1121,11 @@ const PATH_WORD: Record<string, string> = {
   connecting: 'negotiating',
   offline: 'not connected',
 };
+
+/// The address a server started on this machine with the project's own
+/// docker compose listens on. Prefilled because it is right for every local
+/// test and wrong only for someone who already knows what to change it to.
+const DEFAULT_SERVER = 'http://localhost:8080';
 
 const CORE_LABEL: Record<Phase, string> = {
   idle: 'off',
