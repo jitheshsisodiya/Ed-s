@@ -175,8 +175,8 @@ class AuthProvider extends ChangeNotifier {
           : e.isUnauthorized
               ? 'That code did not work. It only works once and expires after '
                   'a few minutes — take a fresh one from your computer.'
-              : 'The server refused the pairing code (${e.statusCode}). '
-                  '\n\n\${e.message}';
+              : 'The server refused the pairing code (${e.statusCode}).'
+                  '\n\n${e.message}';
       status = AuthStatus.unauthenticated;
       return null;
     } finally {

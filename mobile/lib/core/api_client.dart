@@ -19,6 +19,23 @@ import 'server_url.dart';
 /// reads as the password being wrong rather than the address being unset.
 const String kDefaultServerUrl = '';
 
+/// The API root for a server address.
+///
+/// What gets stored is the machine's address — `https://192.168.1.20:8080` —
+/// because that is what a pairing code carries, what a discovery announcement
+/// carries, and what a person can be shown and check. The version prefix is
+/// added here instead, so one stored value works however it arrived.
+///
+/// Mirrors apiBaseURL in client/agent/agent.go. It did not exist here, and
+/// every request went to a path without the prefix: the server answered 404,
+/// and the app reported it as a rejected pairing code.
+String apiBaseUrl(String serverUrl) {
+  final trimmed = serverUrl.replaceAll(RegExp(r'/+$'), '');
+  if (trimmed.isEmpty) return trimmed;
+  if (trimmed.endsWith('/api/v1')) return trimmed;
+  return '$trimmed/api/v1';
+}
+
 /// Typed REST client for the NexusVPN control plane, mirroring every
 /// endpoint documented in `api/openapi.yaml`. Handles bearer-token auth,
 /// transparent refresh-on-401, and self-hosted base URLs.
@@ -124,7 +141,7 @@ class ApiClient {
     query?.forEach((k, v) {
       if (v != null) qp[k] = v.toString();
     });
-    return Uri.parse('$base$path').replace(
+    return Uri.parse('${apiBaseUrl(base)}$path').replace(
       queryParameters: qp.isEmpty ? null : qp,
     );
   }
