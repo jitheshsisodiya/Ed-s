@@ -45,6 +45,8 @@ export function SetStartWithSystem(arg1:boolean):Promise<void>;
 
 export function ShowWindow():Promise<void>;
 
+export function StartPairing(arg1:string):Promise<agent.PairingLink>;
+
 export function StopUsingExitNode():Promise<void>;
 
 export function TakePendingInvite():Promise<string>;

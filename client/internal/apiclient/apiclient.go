@@ -416,3 +416,42 @@ func (c *Client) ListPeers(ctx context.Context, deviceID string) ([]Device, erro
 	_, err := c.do(ctx, http.MethodGet, "/devices/"+url.PathEscape(deviceID)+"/peers", nil, &peers, true)
 	return peers, err
 }
+
+// Pairing is a code that signs another device in as this account.
+type Pairing struct {
+	Token     string `json:"token"`
+	ExpiresIn int    `json:"expiresIn"`
+}
+
+// StartPairing asks for a pairing code, optionally naming the network the
+// new device should end up on.
+// POST /auth/pair
+func (c *Client) StartPairing(ctx context.Context, networkID string) (*Pairing, error) {
+	var p Pairing
+	_, err := c.do(ctx, http.MethodPost, "/auth/pair",
+		map[string]string{"networkId": networkID}, &p, true)
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// ClaimedPairing is the session a pairing code buys, and where to go next.
+type ClaimedPairing struct {
+	TokenPair
+	NetworkID string `json:"networkId"`
+	Email     string `json:"email"`
+}
+
+// ClaimPairing spends a pairing code and adopts the session it returns.
+// POST /auth/pair/claim
+func (c *Client) ClaimPairing(ctx context.Context, token string) (*ClaimedPairing, error) {
+	var claimed ClaimedPairing
+	_, err := c.do(ctx, http.MethodPost, "/auth/pair/claim",
+		map[string]string{"token": token}, &claimed, false)
+	if err != nil {
+		return nil, err
+	}
+	c.SetTokens(claimed.AccessToken, claimed.RefreshToken)
+	return &claimed, nil
+}

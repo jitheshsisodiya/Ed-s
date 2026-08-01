@@ -581,3 +581,16 @@ func (a *App) StopUsingExitNode() error {
 	}
 	return a.agent.StopUsingExitNode()
 }
+
+// StartPairing issues a code that signs a phone in as this account, on this
+// network, without anything being typed on it.
+func (a *App) StartPairing(networkID string) (agent.PairingLink, error) {
+	if err := a.ready(); err != nil {
+		return agent.PairingLink{}, err
+	}
+	link, err := a.agent.StartPairing(a.ctx, networkID)
+	if err != nil {
+		return agent.PairingLink{}, err
+	}
+	return *link, nil
+}

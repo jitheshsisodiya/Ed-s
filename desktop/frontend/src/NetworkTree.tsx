@@ -9,6 +9,7 @@ import {
   Link2,
   Link2Off,
   QrCode,
+  Smartphone,
   Radio,
 } from 'lucide-react';
 
@@ -38,6 +39,7 @@ export default function NetworkTree({
   onConnect,
   onDisconnect,
   onShare,
+  onPairPhone,
   onCopy,
   onUseExit,
   onStopExit,
@@ -53,6 +55,7 @@ export default function NetworkTree({
   onConnect: (n: agent.Network) => void;
   onDisconnect: () => void;
   onShare: (n: agent.Network) => void;
+  onPairPhone: (n: agent.Network) => void;
   onCopy: (text: string, label?: string) => void;
   onUseExit: (peer: agent.Peer) => void;
   onStopExit: () => void;
@@ -115,6 +118,12 @@ export default function NetworkTree({
               </span>
 
               <div className="ml-auto flex shrink-0 items-center gap-0.5">
+                <IconAction
+                  label={`Add your phone to ${n.name}`}
+                  onClick={() => onPairPhone(n)}
+                >
+                  <Smartphone size={12} />
+                </IconAction>
                 {n.inviteCode && (
                   <IconAction label={`Invite people to ${n.name}`} onClick={() => onShare(n)}>
                     <QrCode size={12} />

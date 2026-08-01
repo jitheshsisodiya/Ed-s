@@ -40,6 +40,7 @@ import type { agent, main } from '../wailsjs/go/models';
 
 import Dialog, { Danger, Input, Primary, Row, Secondary, Toggle } from './Dialog';
 import Invite from './Invite';
+import PairPhone from './PairPhone';
 import MenuBar, { item, separator } from './MenuBar';
 import NetworkTree, { setSelfAddress } from './NetworkTree';
 import ReactorCore, { type Phase } from './ReactorCore';
@@ -64,6 +65,7 @@ type Modal =
   | { kind: 'rename' }
   | { kind: 'properties'; peer: agent.Peer }
   | { kind: 'invite'; network: agent.Network }
+  | { kind: 'pair'; network: agent.Network }
   | null;
 
 export default function App() {
@@ -420,6 +422,7 @@ export default function App() {
         onConnect={connectTo}
         onDisconnect={disconnect}
         onShare={(network) => setModal({ kind: 'invite', network })}
+        onPairPhone={(network) => setModal({ kind: 'pair', network })}
         onCopy={copy}
         onUseExit={(peer) =>
           run(() =>
@@ -499,6 +502,9 @@ export default function App() {
           onCopy={copy}
           onClose={() => setModal(null)}
         />
+      )}
+      {modal?.kind === 'pair' && (
+        <PairPhone network={modal.network} onClose={() => setModal(null)} />
       )}
       {modal?.kind === 'invite' && (
         <Invite network={modal.network} onClose={() => setModal(null)} onCopy={copy} />

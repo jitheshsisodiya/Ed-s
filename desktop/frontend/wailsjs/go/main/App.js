@@ -86,6 +86,10 @@ export function ShowWindow() {
   return window['go']['main']['App']['ShowWindow']();
 }
 
+export function StartPairing(arg1) {
+  return window['go']['main']['App']['StartPairing'](arg1);
+}
+
 export function StopUsingExitNode() {
   return window['go']['main']['App']['StopUsingExitNode']();
 }

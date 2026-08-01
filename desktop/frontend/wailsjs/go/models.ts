@@ -42,6 +42,24 @@ export namespace agent {
 	        this.joined = source["joined"];
 	    }
 	}
+	export class PairingLink {
+	    url: string;
+	    serverUrl: string;
+	    token: string;
+	    expiresIn: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PairingLink(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.url = source["url"];
+	        this.serverUrl = source["serverUrl"];
+	        this.token = source["token"];
+	        this.expiresIn = source["expiresIn"];
+	    }
+	}
 	export class Peer {
 	    deviceId: string;
 	    deviceName: string;
