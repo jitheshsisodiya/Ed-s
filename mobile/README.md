@@ -57,31 +57,51 @@ lib/core/          api_client (REST + refresh-on-401), models, secure storage,
                    router
 lib/screens/       home, login, register, MFA, forgot password, networks,
                    network detail, devices, settings
-lib/widgets/       shared UI pieces
-test/              model (de)serialization, API client, connection quality
-                   and widget tests
+lib/widgets/       deck: reactor core, scrambler, signal bars, network
+                   tree, device sheet
+test/              model (de)serialization, API client, connection quality,
+                   widget and layout tests
 android/           platform project: VPN, camera and notification
                    permissions, and the backup opt-out below
 ```
 
 ## What the app shows
 
-The app opens on **home**: one round control that connects and disconnects,
-the network it acts on, and the other devices you can reach. With a single
-network there is nothing to choose; with several, the control targets the one
-you used last, so it is never a button that does nothing when tapped.
+The app opens on the **deck**: an identity strip carrying one round control
+and this device's address, then a tree of every network you belong to with
+its machines nested underneath. It is the same structure as the desktop app,
+sized for a thumb — you open this to find one machine among a handful and do
+something with it, and a tree puts every candidate on screen with no
+navigation.
 
-Connection health is a word, not a number — **Excellent**, **Good**,
-**Limited** or **Offline**. The rule that produces it lives in
-`lib/core/connection_quality.dart` and is a deliberate copy of
-`describeQuality` in `client/agent/agent.go`; the two are pinned to the same
-test table so a connection that reads "Good" on the desktop cannot read
-"Excellent" on the phone.
+Where the desktop uses right-click, this uses a tap or long press onto an
+action sheet carrying the actions *and* the properties. On a phone the
+reason you opened it is almost always to copy an address, and a menu that
+leads to a menu puts that two taps away.
 
-Virtual addresses, network ranges, NAT types, the server URL and the device
-key are all behind **Advanced mode** in Settings. They are exactly right for
-someone running their own deployment and exactly wrong as the first thing
-anyone else sees.
+Connection health is carried twice: four signal bars for the glance, and the
+millisecond figure in its own column for anyone who wants it. Both use the
+thresholds in `lib/core/connection_quality.dart`, a deliberate copy of
+`describeQuality` in `client/agent/agent.go` pinned to the same test table —
+so four bars here and "Excellent" on the desktop cannot disagree.
+
+The four connection states — offline, linking, online, tunnel lost — differ
+by motion as well as by colour, since a hue-only difference fails for the
+eight percent of men who cannot reliably separate red from green. Idle is
+still, linking sweeps, online breathes, lost pulses hard and off-rhythm.
+
+## Design
+
+`lib/core/deck_theme.dart` holds the palette, type and the `DeckPhase` enum.
+It restates `desktop/frontend/src/theme.css` because the two platforms cannot
+share a stylesheet; keeping one short file per platform is what makes "are
+these the same product" answerable by reading rather than grepping for hex
+codes.
+
+The app is **dark only**, deliberately. The accent colour carries state, and
+the glows that make that legible have nothing to glow against on a light
+ground. A theme switch here would not be a preference, it would be a second
+design.
 
 ## Security
 
@@ -102,6 +122,10 @@ anyone else sees.
   somewhere they did not ask for it. A restored phone signs in again and
   generates a fresh device key — which is also what you want, since a device
   key that can be cloned onto a second handset identifies two devices.
+- Screen-reader labels carry what colour and motion cannot: the connect
+  control announces its state in words, and status pills are uppercased for
+  the eye but announced in natural casing, because assistive tech spells
+  all-caps words out letter by letter.
 - The API client refreshes an expired access token exactly once per failure,
   de-duplicating concurrent refreshes, and signals session expiry so the app
   returns to sign-in rather than retrying forever.

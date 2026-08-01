@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import 'core/app_settings.dart';
+import 'core/deck_theme.dart';
 import 'core/auth_provider.dart';
 import 'core/router.dart';
 import 'core/vpn_controller.dart';
@@ -47,39 +48,18 @@ class _NexusVpnAppState extends State<NexusVpnApp> {
         ChangeNotifierProvider<VpnController>.value(value: _vpnController),
         ChangeNotifierProvider<Preferences>.value(value: _preferences),
       ],
-      child: Consumer<Preferences>(
-        builder: (context, prefs, _) => MaterialApp.router(
-          title: 'NexusVPN',
-          debugShowCheckedModeBanner: false,
-          theme: _buildTheme(Brightness.light),
-          darkTheme: _buildTheme(Brightness.dark),
-          themeMode: prefs.themeMode,
-          routerConfig: _router,
-        ),
+      // The deck commits to one visual world: the accent colour carries
+      // state, and the glows that make it legible have nothing to glow
+      // against on a light ground. A theme switch here would not be a
+      // preference, it would be a second design.
+      child: MaterialApp.router(
+        title: 'NexusVPN',
+        debugShowCheckedModeBanner: false,
+        theme: Deck.theme(),
+        darkTheme: Deck.theme(),
+        themeMode: ThemeMode.dark,
+        routerConfig: _router,
       ),
     );
   }
-}
-
-ThemeData _buildTheme(Brightness brightness) {
-  final seed = const Color(0xFF3D5CFF);
-  final colorScheme = ColorScheme.fromSeed(
-    seedColor: seed,
-    brightness: brightness,
-  );
-  return ThemeData(
-    colorScheme: colorScheme,
-    useMaterial3: true,
-    inputDecorationTheme: const InputDecorationTheme(
-      border: OutlineInputBorder(),
-      filled: false,
-    ),
-    cardTheme: const CardThemeData(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(Radius.circular(14)),
-      ),
-    ),
-    appBarTheme: const AppBarTheme(centerTitle: false, elevation: 0),
-  );
 }

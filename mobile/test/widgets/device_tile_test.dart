@@ -30,7 +30,12 @@ void main() {
 
     expect(find.text('Studio Desktop'), findsOneWidget);
     expect(find.text('Direct connection'), findsOneWidget);
-    expect(find.text('Excellent'), findsOneWidget);
+    // Case-insensitive: the pill uppercases for the eye, and the test cares
+    // that the verdict is present, not how it is cased.
+    expect(
+      find.textContaining(RegExp('excellent', caseSensitive: false)),
+      findsOneWidget,
+    );
     // The address and the raw number are the things Advanced mode exists for.
     expect(find.textContaining('100.84.0.12'), findsNothing);
     expect(find.textContaining('12 ms'), findsNothing);
@@ -58,7 +63,10 @@ void main() {
       ),
     );
 
-    expect(find.text('Offline'), findsOneWidget);
+    expect(
+      find.textContaining(RegExp('offline', caseSensitive: false)),
+      findsOneWidget,
+    );
     expect(find.text('Last seen 2 hr ago'), findsOneWidget);
   });
 
