@@ -210,6 +210,13 @@ type role struct {
 	Host bool `json:"host"`
 	// Chosen distinguishes "join, and I meant it" from "not asked yet".
 	Chosen bool `json:"chosen"`
+	// Remote is true when this machine should be reachable from outside the
+	// local network, which means asking the router to forward a port.
+	//
+	// Off unless asked for. It makes a machine reachable from the internet,
+	// which is a decision belonging to whoever owns it — not something to
+	// arrange on their behalf because it happens to be convenient.
+	Remote bool `json:"remote"`
 }
 
 func rolePath() string { return filepath.Join(dataDir(), "role.json") }
@@ -283,7 +290,8 @@ func (a *App) startServer() error {
 		return nil
 	}
 	srv, err := local.Start(a.ctx, local.Options{
-		DataDir: dataDir(),
+		DataDir:        dataDir(),
+		OpenRouterPort: loadRole().Remote,
 		Logf: func(format string, args ...any) {
 			a.logf(format, args...)
 		},
@@ -295,10 +303,24 @@ func (a *App) startServer() error {
 	return nil
 }
 
+// SetReachableFromAnywhere turns router port forwarding on or off.
+//
+// Takes effect on the next start rather than immediately, and says so:
+// unwinding a running server's listeners and mappings in place is more ways
+// to get it wrong than the convenience is worth.
+func (a *App) SetReachableFromAnywhere(remote bool) error {
+	r := loadRole()
+	r.Remote = remote
+	if err := saveRole(r); err != nil {
+		return fmt.Errorf("could not save that choice: %w", err)
+	}
+	return nil
+}
+
 // SetServerRole records whether this machine hosts the control plane, and
 // starts it if so. Called once, from the first screen.
 func (a *App) SetServerRole(host bool) error {
-	if err := saveRole(role{Host: host, Chosen: true}); err != nil {
+	if err := saveRole(role{Host: host, Chosen: true, Remote: loadRole().Remote}); err != nil {
 		return fmt.Errorf("could not save that choice: %w", err)
 	}
 	if !host {
@@ -345,6 +367,13 @@ type LocalServer struct {
 	// LANURL is what other machines on this network should use, empty if
 	// this machine has no routable address.
 	LANURL string `json:"lanUrl"`
+	// PublicURL reaches this machine from outside the network. Empty means
+	// the router would not open a port, or was never asked.
+	PublicURL string `json:"publicUrl"`
+	// Remote reports whether opening a port was asked for at all, so the UI
+	// can tell "not requested" from "requested and refused" — which are
+	// different problems with different answers.
+	Remote bool `json:"remote"`
 	// FirstRun reports that no account exists yet, so the UI offers to
 	// create one instead of asking for a password nobody has set.
 	FirstRun bool `json:"firstRun"`
@@ -354,15 +383,17 @@ type LocalServer struct {
 func (a *App) GetLocalServer() LocalServer {
 	r := loadRole()
 	if a.server == nil {
-		return LocalServer{Chosen: r.Chosen, Host: r.Host}
+		return LocalServer{Chosen: r.Chosen, Host: r.Host, Remote: r.Remote}
 	}
 	return LocalServer{
-		Chosen:   true,
-		Host:     true,
-		Running:  true,
-		URL:      a.server.BaseURL,
-		LANURL:   a.server.LANURL,
-		FirstRun: a.server.IsFirstRun(),
+		Chosen:    true,
+		Host:      true,
+		Running:   true,
+		URL:       a.server.BaseURL,
+		LANURL:    a.server.LANURL,
+		PublicURL: a.server.PublicURL,
+		Remote:    r.Remote,
+		FirstRun:  a.server.IsFirstRun(),
 	}
 }
 

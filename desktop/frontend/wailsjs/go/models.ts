@@ -47,6 +47,7 @@ export namespace agent {
 	    serverUrl: string;
 	    token: string;
 	    expiresIn: number;
+	    fingerprint: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new PairingLink(source);
@@ -58,6 +59,7 @@ export namespace agent {
 	        this.serverUrl = source["serverUrl"];
 	        this.token = source["token"];
 	        this.expiresIn = source["expiresIn"];
+	        this.fingerprint = source["fingerprint"];
 	    }
 	}
 	export class Peer {
@@ -193,6 +195,8 @@ export namespace main {
 	    running: boolean;
 	    url: string;
 	    lanUrl: string;
+	    publicUrl: string;
+	    remote: boolean;
 	    firstRun: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -206,6 +210,8 @@ export namespace main {
 	        this.running = source["running"];
 	        this.url = source["url"];
 	        this.lanUrl = source["lanUrl"];
+	        this.publicUrl = source["publicUrl"];
+	        this.remote = source["remote"];
 	        this.firstRun = source["firstRun"];
 	    }
 	}

@@ -74,6 +74,10 @@ export function SetDeviceName(arg1) {
   return window['go']['main']['App']['SetDeviceName'](arg1);
 }
 
+export function SetReachableFromAnywhere(arg1) {
+  return window['go']['main']['App']['SetReachableFromAnywhere'](arg1);
+}
+
 export function SetServerRole(arg1) {
   return window['go']['main']['App']['SetServerRole'](arg1);
 }

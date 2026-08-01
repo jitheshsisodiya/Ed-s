@@ -56,6 +56,12 @@ type Options struct {
 
 	// Logf receives progress messages. Optional.
 	Logf func(format string, args ...any)
+
+	// OpenRouterPort asks the router to forward the control-plane port, so
+	// devices away from this network can still reach it. Off by default: it
+	// makes a machine reachable from the internet, which is a decision for
+	// the person who owns it rather than something to do on their behalf.
+	OpenRouterPort bool
 }
 
 // Server is a running local control plane.
@@ -72,6 +78,13 @@ type Server struct {
 	// empty if this machine has no routable address.
 	LANURL string
 
+	// PublicURL is the address that reaches this machine from outside the
+	// house, or empty if the router would not open a hole. Empty is a
+	// normal outcome, not a failure: plenty of networks have no router that
+	// can be asked, and a connection behind carrier-grade NAT cannot be
+	// opened at all.
+	PublicURL string
+
 	// Recorded so tests and callers can find the data on disk and report
 	// which ports were actually taken.
 	dataDir  string
@@ -79,6 +92,7 @@ type Server struct {
 	grpcPort int
 
 	store    *embedded.Store
+	ports    *PortMapper
 	http     *stdhttp.Server
 	grpc     *grpc.Server
 	grpcLis  net.Listener
@@ -264,11 +278,18 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 	}()
 
 	srv.shutdown = func() {
+		if srv.ports != nil {
+			srv.ports.Close()
+		}
 		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = httpServer.Shutdown(shutCtx)
 		grpcServer.GracefulStop()
 		_ = store.Close()
+	}
+
+	if opts.OpenRouterPort {
+		srv.openRouterPort(ctx, opts.HTTPPort, opts.GRPCPort, logf)
 	}
 
 	logf("local: control plane listening on %s (grpc %s)", httpAddr, grpcAddr)
@@ -465,4 +486,46 @@ func randomSecret() string {
 		panic("local: no source of randomness available: " + err.Error())
 	}
 	return hex.EncodeToString(b)
+}
+
+// openRouterPort asks the router to let the outside world reach this machine.
+//
+// Best effort, and silent about it beyond a log line, because there is
+// nothing a person can do about a router that says no except forward the
+// port themselves — which the UI tells them, using PublicURL being empty as
+// the signal. Failing to open a port must never stop the server starting: a
+// control plane that works on the local network is the common case and by far
+// the more important one.
+func (s *Server) openRouterPort(ctx context.Context, httpPort, grpcPort int, logf func(string, ...any)) {
+	s.ports = NewPortMapper(logf)
+
+	mapCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+
+	// Both ports, because a device signs in over HTTP and then negotiates
+	// the tunnel over gRPC. One without the other produces a server that can
+	// be reached and not connected through, which is worse than one that
+	// cannot be reached at all: it fails later, after the person believes it
+	// worked. So a partial result is called out rather than presented as
+	// success.
+	got := s.ports.Open(mapCtx, []Port{
+		{Protocol: "tcp", Number: httpPort},
+		{Protocol: "tcp", Number: grpcPort},
+	})
+
+	if len(got) == 1 {
+		logf("local: the router opened only one of the two ports needed, so "+
+			"devices away from this network may sign in and fail to connect; "+
+			"forward %d and %d by hand if this matters", httpPort, grpcPort)
+	}
+	if len(got) == 0 {
+		logf("local: the router did not open a port, so this machine is " +
+			"reachable on the local network only")
+		return
+	}
+	if addr := s.ports.ExternalAddress(); addr != "" {
+		s.PublicURL = fmt.Sprintf("https://%s:%d", addr, got[0].External)
+		logf("local: reachable from outside this network at %s (via %s)",
+			s.PublicURL, got[0].Method)
+	}
 }

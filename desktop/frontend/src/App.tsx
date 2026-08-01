@@ -7,6 +7,7 @@ import {
   Link2,
   Server,
   ShieldAlert,
+  Globe,
   Sliders,
   X,
 } from 'lucide-react';
@@ -27,6 +28,7 @@ import {
   Logout,
   Register,
   RotateDeviceKey,
+  SetReachableFromAnywhere,
   SetServerRole,
   SetDeviceName,
   SetStartWithSystem,
@@ -485,6 +487,7 @@ export default function App() {
           session={session}
           version={version}
           busy={busy}
+          server={server}
           logs={logs}
           killSwitch={killSwitchPref === 'on'}
           allowLan={allowLanPref === 'on'}
@@ -814,10 +817,85 @@ function Fact({
   );
 }
 
+/**
+ * Whether this machine can be reached from outside the house.
+ *
+ * The three states are genuinely different and are shown as such: never
+ * asked, asked and the router agreed, asked and the router refused. Collapsing
+ * the last two into "not working" would leave somebody unable to tell whether
+ * to change a setting here or one on their router.
+ */
+function Reach({ server }: { server: main.LocalServer | null }) {
+  const [remote, setRemote] = useState(server?.remote ?? false);
+  const [saved, setSaved] = useState(false);
+
+  if (!server?.host) {
+    return (
+      <p className="text-[11.5px] leading-relaxed text-ink-dim">
+        This machine joins a server somebody else runs, so there is nothing here
+        to expose. These settings belong on the machine hosting the network.
+      </p>
+    );
+  }
+
+  const change = (v: boolean) => {
+    setRemote(v);
+    setSaved(false);
+    SetReachableFromAnywhere(v)
+      .then(() => setSaved(true))
+      .catch(() => undefined);
+  };
+
+  return (
+    <>
+      <Group title="Away from this network">
+        <Toggle
+          checked={remote}
+          onChange={change}
+          label={remote ? 'Reachable from anywhere' : 'This network only'}
+        />
+        <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-faint">
+          Asks your router to forward a port, so your phone can connect over
+          mobile data. Leave it off if your devices are only ever on the same
+          Wi-Fi &mdash; it puts this machine on the internet, and the fewer
+          things there the better.
+        </p>
+        {saved && (
+          <p className="mt-1.5 text-[11.5px] leading-relaxed text-work">
+            Takes effect the next time NexusVPN starts.
+          </p>
+        )}
+      </Group>
+
+      <Group title="Addresses">
+        <Fact label="On this network" value={server.lanUrl || 'none found'} small />
+        {remote && (
+          <Fact
+            label="From anywhere"
+            value={server.publicUrl || 'the router did not open a port'}
+            small
+          />
+        )}
+      </Group>
+
+      {remote && !server.publicUrl && server.running && (
+        <p className="text-[11.5px] leading-relaxed text-ink-dim">
+          Your router refused, or cannot be asked. Most routers call this{' '}
+          <strong className="text-ink">UPnP</strong> or{' '}
+          <strong className="text-ink">NAT-PMP</strong>, and many ship with it
+          switched off. Turning it on there &mdash; or forwarding ports 8080 and
+          9090 to this machine by hand &mdash; does the same job.
+        </p>
+      )}
+    </>
+  );
+}
+
 function SettingsDialog({
   session,
   version,
   busy,
+  server,
   logs,
   killSwitch,
   allowLan,
@@ -830,6 +908,7 @@ function SettingsDialog({
   session: agent.Session;
   version: string;
   busy: boolean;
+  server: main.LocalServer | null;
   logs: string[];
   killSwitch: boolean;
   allowLan: boolean;
@@ -839,7 +918,7 @@ function SettingsDialog({
   onCopy: (text: string, label?: string) => void;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<'general' | 'routing' | 'diagnostics'>('general');
+  const [tab, setTab] = useState<'general' | 'reach' | 'routing' | 'diagnostics'>('general');
   const [startup, setStartup] = useState<main.StartupPref | null>(null);
   const [startupErr, setStartupErr] = useState('');
 
@@ -871,6 +950,7 @@ function SettingsDialog({
           {(
             [
               ['general', 'General', Sliders],
+              ['reach', 'Reach', Globe],
               ['routing', 'Routing', ShieldAlert],
               ['diagnostics', 'Diagnostics', Bell],
             ] as const
@@ -939,6 +1019,8 @@ function SettingsDialog({
               </Group>
             </>
           )}
+
+          {tab === 'reach' && <Reach server={server} />}
 
           {tab === 'routing' && (
             <>
