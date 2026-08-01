@@ -1528,6 +1528,12 @@ function humanError(err: unknown): { message: string; fix?: string } {
       fix: 'Usually an address left over from an older version. Sign out and back in, or take a fresh pairing code from the machine hosting the network.',
     };
   }
+  if (lower.includes('unknown authority') || lower.includes('x509')) {
+    return {
+      message: 'That server could not be identified.',
+      fix: 'A self-hosted server proves itself through a pairing code, not a public certificate. Take one from the machine hosting the network rather than typing its address.',
+    };
+  }
   if (lower.includes('not the machine you paired with')) {
     return {
       message: 'Something else is answering at that address.',

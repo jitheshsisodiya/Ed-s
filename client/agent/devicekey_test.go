@@ -266,3 +266,53 @@ func TestUseServerTrimsATrailingSlash(t *testing.T) {
 		t.Fatalf("server url = %q", cfg.ServerURL)
 	}
 }
+
+// TestPinForOnlyAppliesToTheServerItBelongsTo.
+//
+// Sign-in happens against an address typed or prefilled rather than one
+// already stored, so it cannot simply read the stored fingerprint — that
+// might belong to a completely different machine. Pinning one server's
+// certificate while talking to another refuses every request, with nothing
+// saying why.
+func TestPinForOnlyAppliesToTheServerItBelongsTo(t *testing.T) {
+	a := newTestAgent(t)
+	const fingerprint = "aee195632066bcf54bd127965c554a010fdfb5e36576b925d1a89ecd610571e5"
+
+	if err := a.UseServer("https://192.168.1.20:8080", fingerprint); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := a.pinFor("https://192.168.1.20:8080"); got != fingerprint {
+		t.Fatalf("the server's own certificate was not used: %q", got)
+	}
+	// Written the ways a person or a prefill might produce it.
+	if got := a.pinFor("https://192.168.1.20:8080/"); got != fingerprint {
+		t.Fatal("a trailing slash was treated as a different server")
+	}
+	if got := a.pinFor("HTTPS://192.168.1.20:8080"); got != fingerprint {
+		t.Fatal("a difference in case was treated as a different server")
+	}
+
+	for _, other := range []string{
+		"https://192.168.1.21:8080", // a different machine
+		"https://192.168.1.20:9999", // a different port
+		"http://192.168.1.20:8080",  // a different scheme
+		"",
+	} {
+		if got := a.pinFor(other); got != "" {
+			t.Errorf("pinFor(%q) returned another server's certificate", other)
+		}
+	}
+}
+
+// TestSameServerNeverMatchesNothing: an installation with no stored address
+// must not be treated as matching whatever it is asked about, which would
+// hand out an empty pin as though it were a decision.
+func TestSameServerNeverMatchesNothing(t *testing.T) {
+	if sameServer("", "") {
+		t.Fatal("two empty addresses were treated as the same server")
+	}
+	if sameServer("", "https://192.168.1.20:8080") {
+		t.Fatal("an unset address matched a real one")
+	}
+}

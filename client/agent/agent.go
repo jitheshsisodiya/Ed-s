@@ -239,7 +239,9 @@ func (a *Agent) Login(ctx context.Context, serverURL, email, password, mfaCode s
 		return fmt.Errorf("email and password are required")
 	}
 
-	client := apiclient.New(apiBaseURL(serverURL), apiclient.Options{})
+	client := apiclient.New(apiBaseURL(serverURL), apiclient.Options{
+		HTTPClient: apiclient.PinnedClient(a.pinFor(serverURL), 0),
+	})
 	tokens, err := client.Login(ctx, email, password, mfaCode)
 	if err != nil {
 		return err
@@ -249,6 +251,13 @@ func (a *Agent) Login(ctx context.Context, serverURL, email, password, mfaCode s
 	}
 
 	_, err = a.store.Update(func(c *config.Config) error {
+		// A different server means the stored certificate belongs to
+		// somebody else. Keeping it would pin this session to a machine it
+		// is not talking to, and every request would be refused with no
+		// explanation of why.
+		if !sameServer(c.ServerURL, serverURL) {
+			c.ServerFingerprint = ""
+		}
 		c.ServerURL = serverURL
 		c.AccessToken = tokens.AccessToken
 		c.RefreshToken = tokens.RefreshToken
@@ -256,6 +265,38 @@ func (a *Agent) Login(ctx context.Context, serverURL, email, password, mfaCode s
 		return nil
 	})
 	return err
+}
+
+// pinFor returns the certificate to expect from a server, if this
+// installation has been introduced to it.
+//
+// Sign-in and registration happen against an address typed or prefilled
+// rather than one already stored, so they cannot simply read the stored pin —
+// it might belong to a different machine entirely. It is used only when the
+// address matches the one it was recorded against.
+//
+// An empty result means ordinary verification, which for a self-signed server
+// means refusing to connect. That is the right outcome for an address nobody
+// has vouched for: the way to be introduced to a self-hosted server is to
+// pair with it, which carries the certificate along with the address.
+func (a *Agent) pinFor(serverURL string) string {
+	cfg, err := a.store.Load()
+	if err != nil {
+		return ""
+	}
+	if sameServer(cfg.ServerURL, serverURL) {
+		return cfg.ServerFingerprint
+	}
+	return ""
+}
+
+// sameServer compares two addresses the way a person would, ignoring a
+// trailing slash and letter case.
+func sameServer(a, b string) bool {
+	norm := func(s string) string {
+		return strings.ToLower(strings.TrimRight(strings.TrimSpace(s), "/"))
+	}
+	return norm(a) != "" && norm(a) == norm(b)
 }
 
 // Logout revokes the session server-side (best effort) and clears it locally,
@@ -962,7 +1003,9 @@ func (a *Agent) Register(ctx context.Context, serverURL, email, password, displa
 		return fmt.Errorf("email and password are required")
 	}
 
-	client := apiclient.New(apiBaseURL(serverURL), apiclient.Options{})
+	client := apiclient.New(apiBaseURL(serverURL), apiclient.Options{
+		HTTPClient: apiclient.PinnedClient(a.pinFor(serverURL), 0),
+	})
 	if _, err := client.Register(ctx, email, password, displayName); err != nil {
 		return err
 	}
