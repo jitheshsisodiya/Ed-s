@@ -56,8 +56,9 @@ requires elevation:
 
 - **Windows** — the app manifest requests `requireAdministrator`, so Windows
   prompts at launch instead of failing later. The
-  [Wintun](https://www.wintun.net/) driver must be installed (ship
-  `wintun.dll` beside the executable, or install it system-wide).
+  [Wintun](https://www.wintun.net/) driver travels inside the executable and
+  is written beside it the first time a tunnel comes up; nothing to download.
+  See `client/internal/wintundll` for which build is bundled and why.
 - **macOS** — launch elevated. For distribution the bundle must be signed and
   notarised with an Apple Developer ID; `build/darwin/Info.plist` is the
   starting point.

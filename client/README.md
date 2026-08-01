@@ -48,9 +48,10 @@ Creating a TUN interface is privileged on every platform:
 
 - **Linux** — run with `sudo` (or grant `CAP_NET_ADMIN`). Uses `iproute2`.
 - **macOS** — run with `sudo`. The OS assigns a `utunN` name.
-- **Windows** — run as Administrator, and install the
-  [Wintun](https://www.wintun.net/) driver (`wintun.dll` beside the binary
-  or in `System32`). Addressing is applied via PowerShell.
+- **Windows** — run as Administrator. The [Wintun](https://www.wintun.net/)
+  driver is bundled inside the binary and written beside it on first use, so
+  there is nothing to install; see `internal/wintundll`. Addressing is applied
+  via PowerShell.
 
 ## How connectivity is established
 

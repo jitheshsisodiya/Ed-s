@@ -27,6 +27,8 @@ import (
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun"
+
+	"github.com/jitheshsisodiya/Ed-s/client/internal/wintundll"
 )
 
 // DefaultMTU matches WireGuard's conventional default MTU, leaving room
@@ -107,6 +109,13 @@ func New(cfg InterfaceConfig) (*Device, error) {
 	mtu := cfg.MTU
 	if mtu == 0 {
 		mtu = DefaultMTU
+	}
+
+	// On Windows the tunnel adapter comes from the Wintun driver, which has
+	// to exist on disk before the call below can find it. Everywhere else
+	// this is a no-op.
+	if err := wintundll.Ensure(); err != nil {
+		return nil, fmt.Errorf("wireguard: install the Wintun driver: %w", err)
 	}
 
 	tunDev, err := tun.CreateTUN(cfg.Name, mtu)

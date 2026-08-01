@@ -1,0 +1,5 @@
+# The bundled Wintun driver is a deliberate exception to the repository-wide
+# *.dll rule: it is the shipped artefact, not a build output. Its hashes are
+# pinned by a test.
+!wintun-amd64.dll
+!wintun-arm64.dll
