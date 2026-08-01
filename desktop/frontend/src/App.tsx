@@ -1388,6 +1388,12 @@ function humanError(err: unknown): { message: string; fix?: string } {
   if (isSessionExpired(raw)) {
     return { message: 'Your session has expired.', fix: 'Sign in again to continue.' };
   }
+  if (lower.includes('permissiondenied') || lower.includes('forbidden')) {
+    return {
+      message: 'This account is not a member of that network.',
+      fix: 'Ask whoever runs it for a fresh invite code, or sign in as the account that joined it.',
+    };
+  }
   if (lower.includes('invite')) {
     return { message: 'That invite did not work.', fix: 'Codes can be replaced — ask for a fresh one.' };
   }

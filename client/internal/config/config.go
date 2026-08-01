@@ -47,6 +47,18 @@ type NetworkState struct {
 	CIDR       string    `json:"cidr"`
 	DNSServers []string  `json:"dnsServers,omitempty"`
 	JoinedAt   time.Time `json:"joinedAt"`
+
+	// Keypair is this machine's WireGuard identity on this network, and
+	// only this one.
+	//
+	// The control plane records a device against one user and one network,
+	// and looks devices up by public key alone, so a key that has been
+	// registered on one network cannot be presented on another — the server
+	// refuses it as belonging to somebody else. One key per installation
+	// therefore meant one network per installation, which for a mesh VPN is
+	// not a limitation anybody would accept.
+	Keypair Keypair `json:"keypair,omitempty"`
+
 	// AutoConnect indicates the tunnel should be brought up for this
 	// network automatically (e.g. on `up` with no explicit target, or on
 	// daemon/desktop-app startup).

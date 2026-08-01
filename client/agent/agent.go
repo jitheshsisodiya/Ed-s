@@ -8,6 +8,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -442,7 +443,28 @@ func (a *Agent) ResolveNetwork(networkID string) (id, name string, err error) {
 // background. Call Disconnect (or Wait) to stop it.
 //
 // Creating a TUN device is privileged on every platform.
+// Connect brings the tunnel up on a network.
+//
+// A registration the server refuses is retried once with a fresh device key.
+// The commonest cause is an identity this installation still holds from an
+// account it has since signed out of, and the only way to tell that from a
+// genuine lack of membership is to try — so it tries, once, and reports the
+// second refusal.
 func (a *Agent) Connect(networkID string, opts ConnectOptions) error {
+	err := a.connect(networkID, opts)
+	if !errors.Is(err, errStaleDeviceKey) {
+		return err
+	}
+	if resetErr := a.resetDeviceKey(networkID); resetErr != nil {
+		return resetErr
+	}
+	if opts.Logf != nil {
+		opts.Logf("the server did not accept this machine's key; registering as a new device")
+	}
+	return a.connect(networkID, opts)
+}
+
+func (a *Agent) connect(networkID string, opts ConnectOptions) error {
 	a.mu.Lock()
 	if a.tun != nil {
 		a.mu.Unlock()
@@ -481,9 +503,14 @@ func (a *Agent) Connect(networkID string, opts ConnectOptions) error {
 	// for the wrong socket entirely.
 	discoBind := disco.NewBind()
 
+	keypair, err := a.deviceKey(networkID)
+	if err != nil {
+		return err
+	}
+
 	dev, err := wireguard.New(wireguard.InterfaceConfig{
 		Name:             ifaceName,
-		PrivateKeyBase64: cfg.Keypair.PrivateKey,
+		PrivateKeyBase64: keypair.PrivateKey,
 		ListenPort:       opts.ListenPort,
 		Bind:             discoBind,
 	})
@@ -549,7 +576,7 @@ func (a *Agent) Connect(networkID string, opts ConnectOptions) error {
 		OS:                DeviceOS(),
 		OSVersion:         runtime.GOARCH,
 		ClientVersion:     opts.ClientVersion,
-		PublicKey:         cfg.Keypair.PublicKey,
+		PublicKey:         keypair.PublicKey,
 		AdvertiseExitNode: opts.AdvertiseExitNode,
 		// Exit-node mode is opt-in and off until UseExitNode is called, but
 		// the machinery is wired now so turning it on never has to
@@ -566,6 +593,12 @@ func (a *Agent) Connect(networkID string, opts ConnectOptions) error {
 	// before any traffic can flow.
 	resp, err := tun.Register(ctx)
 	if err != nil {
+		if isStaleKeyRejection(err) {
+			// Reported as its own thing so Connect can mint a fresh
+			// identity and try again, rather than handing somebody a
+			// sentence about permissions they cannot act on.
+			return abort(fmt.Errorf("%w: %v", errStaleDeviceKey, err))
+		}
 		return abort(err)
 	}
 
