@@ -162,13 +162,21 @@ class AuthProvider extends ChangeNotifier {
       status = AuthStatus.unauthenticated;
       return null;
     } on ApiException catch (e) {
-      // The commonest cause by far is a code that has been used or has run
-      // out, and both look identical from here — deliberately, so a stolen
-      // code cannot be told apart from a fabricated one.
+      // Only 401 means the code itself was refused, and the server
+      // deliberately does not distinguish used from expired from forged, so a
+      // stolen code cannot be told apart from a fabricated one.
+      //
+      // Everything else is a different problem wearing the same message. The
+      // status and the server's own words are kept, because a confident
+      // wrong explanation sends somebody to fetch fresh codes for a fault
+      // that has nothing to do with codes.
       errorMessage = e.isNetworkFailure
           ? await _explainNetworkFailure(e, parsed.serverUrl)
-          : 'That code did not work. It only works once and expires after a '
-              'few minutes — take a fresh one from your computer.';
+          : e.isUnauthorized
+              ? 'That code did not work. It only works once and expires after '
+                  'a few minutes — take a fresh one from your computer.'
+              : 'The server refused the pairing code (${e.statusCode}). '
+                  '\n\n\${e.message}';
       status = AuthStatus.unauthenticated;
       return null;
     } finally {
