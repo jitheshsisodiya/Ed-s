@@ -1,17 +1,30 @@
 package agent
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // The link is the whole interface between two devices that have never met,
 // so every shape it can arrive in is worth pinning.
 func TestParsePairingLink(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		input  string
-		server string
-		token  string
-		ok     bool
+		name        string
+		input       string
+		server      string
+		token       string
+		fingerprint string
+		ok          bool
 	}{
+		{
+			name: "a link carrying a certificate to pin",
+			input: "nexusvpn://pair?f=" + strings.Repeat("ab", 32) +
+				"&s=http%3A%2F%2F192.168.1.20%3A8080&t=tok",
+			server:      "http://192.168.1.20:8080",
+			token:       "tok",
+			fingerprint: strings.Repeat("ab", 32),
+			ok:          true,
+		},
 		{
 			name:   "a link this app generated",
 			input:  "nexusvpn://pair?s=http%3A%2F%2F192.168.1.20%3A8080&t=abc.def.ghi",
@@ -52,12 +65,15 @@ func TestParsePairingLink(t *testing.T) {
 		{name: "not a link at all", input: "ABC123"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			server, token, ok := ParsePairingLink(tc.input)
+			server, token, fingerprint, ok := ParsePairingLink(tc.input)
 			if ok != tc.ok {
 				t.Fatalf("ok = %v, want %v", ok, tc.ok)
 			}
 			if server != tc.server || token != tc.token {
 				t.Fatalf("got (%q, %q), want (%q, %q)", server, token, tc.server, tc.token)
+			}
+			if fingerprint != tc.fingerprint {
+				t.Fatalf("fingerprint = %q, want %q", fingerprint, tc.fingerprint)
 			}
 		})
 	}
@@ -105,7 +121,7 @@ func TestGeneratedLinksParseBack(t *testing.T) {
 		"https://vpn.example.com",
 	} {
 		link := "nexusvpn://pair?s=" + urlEscape(server) + "&t=some.jwt.value"
-		gotServer, gotToken, ok := ParsePairingLink(link)
+		gotServer, gotToken, _, ok := ParsePairingLink(link)
 		if !ok {
 			t.Fatalf("could not read back a link for %q", server)
 		}

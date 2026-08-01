@@ -588,7 +588,13 @@ func (a *App) StartPairing(networkID string) (agent.PairingLink, error) {
 	if err := a.ready(); err != nil {
 		return agent.PairingLink{}, err
 	}
-	link, err := a.agent.StartPairing(a.ctx, networkID)
+	// Only this process knows its own certificate, so it supplies it rather
+	// than letting the agent guess.
+	fingerprint := ""
+	if a.server != nil {
+		fingerprint = a.server.Fingerprint
+	}
+	link, err := a.agent.StartPairing(a.ctx, networkID, fingerprint)
 	if err != nil {
 		return agent.PairingLink{}, err
 	}

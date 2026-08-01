@@ -2,7 +2,11 @@ import 'invite.dart' show kInviteScheme;
 
 /// Where a pairing link points, and what it is worth.
 class PairingLink {
-  const PairingLink({required this.serverUrl, required this.token});
+  const PairingLink({
+    required this.serverUrl,
+    required this.token,
+    this.fingerprint = '',
+  });
 
   /// The machine running NexusVPN. Carried in the link because it is the
   /// part nobody can be expected to know — it is whatever private address
@@ -12,6 +16,10 @@ class PairingLink {
 
   /// A single-use, short-lived credential that buys a session on that server.
   final String token;
+
+  /// The certificate that server must present. Empty for a deployment with a
+  /// real certificate, where the platform's own verification is enough.
+  final String fingerprint;
 }
 
 /// The host part of `nexusvpn://pair?…`, kept distinct from `join` so a
@@ -42,7 +50,12 @@ PairingLink? parsePairingLink(String input) {
 
   final server = (uri.queryParameters['s'] ?? '').trim();
   final token = (uri.queryParameters['t'] ?? '').trim();
+  final fingerprint = (uri.queryParameters['f'] ?? '').trim();
   if (server.isEmpty || token.isEmpty) return null;
 
-  return PairingLink(serverUrl: server, token: token);
+  return PairingLink(
+    serverUrl: server,
+    token: token,
+    fingerprint: fingerprint,
+  );
 }

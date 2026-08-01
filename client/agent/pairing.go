@@ -25,6 +25,11 @@ type PairingLink struct {
 	// ExpiresIn is how many seconds the code is good for, so a screen showing
 	// one can count down rather than going quietly stale.
 	ExpiresIn int `json:"expiresIn"`
+	// Fingerprint is the certificate the scanning device should expect, and
+	// refuse to talk to anything else holding. Carried here because the QR
+	// code is the one channel between these two machines that nobody on the
+	// network is sitting in the middle of.
+	Fingerprint string `json:"fingerprint"`
 }
 
 // pairPath is the host part of nexusvpn://pair?…, kept distinct from join so
@@ -33,7 +38,12 @@ const pairPath = "pair"
 
 // StartPairing asks the control plane for a code that will sign another
 // device in as this account, on this network.
-func (a *Agent) StartPairing(ctx context.Context, networkID string) (*PairingLink, error) {
+//
+// fingerprint is this server's certificate, which the scanning device pins.
+// Passed in rather than discovered, because only the process hosting the
+// control plane knows it, and an agent talking to somebody else's server has
+// no business inventing one.
+func (a *Agent) StartPairing(ctx context.Context, networkID, fingerprint string) (*PairingLink, error) {
 	cfg, client, err := a.authed()
 	if err != nil {
 		return nil, err
@@ -49,40 +59,52 @@ func (a *Agent) StartPairing(ctx context.Context, networkID string) (*PairingLin
 	// this machine.
 	server := reachableServerURL(cfg.ServerURL)
 
+	if fingerprint == "" {
+		fingerprint = cfg.ServerFingerprint
+	}
+
 	q := url.Values{}
 	q.Set("s", server)
 	q.Set("t", p.Token)
+	if fingerprint != "" {
+		q.Set("f", fingerprint)
+	}
 
 	return &PairingLink{
-		URL:       fmt.Sprintf("%s://%s?%s", InviteScheme, pairPath, q.Encode()),
-		ServerURL: server,
-		Token:     p.Token,
-		ExpiresIn: p.ExpiresIn,
+		URL:         fmt.Sprintf("%s://%s?%s", InviteScheme, pairPath, q.Encode()),
+		ServerURL:   server,
+		Token:       p.Token,
+		ExpiresIn:   p.ExpiresIn,
+		Fingerprint: fingerprint,
 	}, nil
 }
 
 // ParsePairingLink pulls the server and code out of a scanned link. Both
 // parts are required: a code without a server cannot be redeemed anywhere.
-func ParsePairingLink(input string) (serverURL, token string, ok bool) {
+func ParsePairingLink(input string) (serverURL, token, fingerprint string, ok bool) {
 	s := strings.TrimSpace(input)
 	if s == "" {
-		return "", "", false
+		return "", "", "", false
 	}
 	u, err := url.Parse(s)
 	if err != nil || !strings.EqualFold(u.Scheme, InviteScheme) {
-		return "", "", false
+		return "", "", "", false
 	}
 	if !strings.EqualFold(strings.Trim(u.Opaque+u.Host+u.Path, "/"), pairPath) {
-		return "", "", false
+		return "", "", "", false
 	}
 
 	q := u.Query()
 	serverURL = strings.TrimSpace(q.Get("s"))
 	token = strings.TrimSpace(q.Get("t"))
+	// The fingerprint is optional so a link from a deployment with a real
+	// certificate still works. Its absence means ordinary verification, not
+	// no verification.
+	fingerprint = strings.TrimSpace(q.Get("f"))
 	if serverURL == "" || token == "" {
-		return "", "", false
+		return "", "", "", false
 	}
-	return serverURL, token, true
+	return serverURL, token, fingerprint, true
 }
 
 // ClaimPairing redeems a scanned link: it stores the server, adopts the
@@ -91,7 +113,7 @@ func ParsePairingLink(input string) (serverURL, token string, ok bool) {
 // Everything is written in one update so a failure part-way through cannot
 // leave a session pointing at one server and an address belonging to another.
 func (a *Agent) ClaimPairing(ctx context.Context, link string) (networkID string, err error) {
-	serverURL, token, ok := ParsePairingLink(link)
+	serverURL, token, fingerprint, ok := ParsePairingLink(link)
 	if !ok {
 		return "", errors.New("that is not a NexusVPN pairing code")
 	}
@@ -101,6 +123,9 @@ func (a *Agent) ClaimPairing(ctx context.Context, link string) (networkID string
 		return "", err
 	}
 	cfg.ServerURL = strings.TrimRight(serverURL, "/")
+	// Installed before the claim, because the claim itself is the first
+	// request to that server and must already be refusing impostors.
+	cfg.ServerFingerprint = fingerprint
 
 	claimed, err := a.client(cfg).ClaimPairing(ctx, token)
 	if err != nil {
@@ -109,6 +134,7 @@ func (a *Agent) ClaimPairing(ctx context.Context, link string) (networkID string
 
 	if _, err := a.store.Update(func(c *config.Config) error {
 		c.ServerURL = cfg.ServerURL
+		c.ServerFingerprint = fingerprint
 		c.AccessToken = claimed.AccessToken
 		c.RefreshToken = claimed.RefreshToken
 		c.UserEmail = claimed.Email

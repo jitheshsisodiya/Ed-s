@@ -736,6 +736,9 @@ func (a *Agent) Status() Status {
 
 func (a *Agent) client(cfg *config.Config) *apiclient.Client {
 	client := apiclient.New(apiBaseURL(cfg.ServerURL), apiclient.Options{
+		// One client per call, so a fingerprint learned during pairing takes
+		// effect on the very next request rather than after a restart.
+		HTTPClient: apiclient.PinnedClient(cfg.ServerFingerprint, 0),
 		OnTokenRefresh: func(tp apiclient.TokenPair) {
 			// Persist rotated tokens so a refreshed session survives restarts.
 			_, _ = a.store.Update(func(c *config.Config) error {

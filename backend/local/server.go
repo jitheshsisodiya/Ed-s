@@ -14,6 +14,7 @@ package local
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -61,6 +62,10 @@ type Options struct {
 type Server struct {
 	// BaseURL is what a client should be pointed at.
 	BaseURL string
+	// Fingerprint identifies this server's TLS certificate. A device pairing
+	// with it is told this value over the QR code and pins it, which is what
+	// makes a self-signed certificate safe here.
+	Fingerprint string
 	// GRPCAddr is the coordination endpoint.
 	GRPCAddr string
 	// LANURL is the address other machines on this network should use, or
@@ -106,6 +111,15 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 
 	store, err := embedded.Open(filepath.Join(opts.DataDir, "server.json"))
 	if err != nil {
+		return nil, err
+	}
+
+	// TLS from the start, not only when exposed. A control plane that speaks
+	// plain HTTP on the LAN and TLS off it would mean two behaviours to get
+	// right and one of them only exercised by the people most at risk.
+	id, err := loadOrCreateIdentity(opts.DataDir)
+	if err != nil {
+		_ = store.Close()
 		return nil, err
 	}
 
@@ -200,6 +214,13 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 	httpServer := &stdhttp.Server{
 		Handler:           router,
 		ReadHeaderTimeout: 10 * time.Second,
+		TLSConfig: &tls.Config{
+			Certificates: []tls.Certificate{id.cert},
+			// 1.2 is the floor because some Android versions in the field
+			// negotiate it and there is no reason to lock those out; nothing
+			// below it is acceptable.
+			MinVersion: tls.VersionTLS12,
+		},
 		// No WriteTimeout: the WebSocket endpoint holds connections open
 		// for the lifetime of a session.
 		IdleTimeout: 120 * time.Second,
@@ -215,21 +236,24 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 	coordgrpc.NewCoordinationServer(coordinationService, logger).Register(grpcServer)
 
 	srv := &Server{
-		BaseURL:  fmt.Sprintf("http://127.0.0.1:%d", opts.HTTPPort),
-		GRPCAddr: fmt.Sprintf("127.0.0.1:%d", opts.GRPCPort),
-		LANURL:   lanURL(opts.HTTPPort),
-		dataDir:  opts.DataDir,
-		httpPort: opts.HTTPPort,
-		grpcPort: opts.GRPCPort,
-		store:    store,
-		http:     httpServer,
-		grpc:     grpcServer,
-		grpcLis:  grpcLis,
-		stopped:  make(chan struct{}),
+		BaseURL:     fmt.Sprintf("https://127.0.0.1:%d", opts.HTTPPort),
+		Fingerprint: id.fingerprint,
+		GRPCAddr:    fmt.Sprintf("127.0.0.1:%d", opts.GRPCPort),
+		LANURL:      lanURL(opts.HTTPPort),
+		dataDir:     opts.DataDir,
+		httpPort:    opts.HTTPPort,
+		grpcPort:    opts.GRPCPort,
+		store:       store,
+		http:        httpServer,
+		grpc:        grpcServer,
+		grpcLis:     grpcLis,
+		stopped:     make(chan struct{}),
 	}
 
 	go func() {
-		if err := httpServer.Serve(httpLis); err != nil && !errors.Is(err, stdhttp.ErrServerClosed) {
+		// Certificate and key are already in TLSConfig, so the empty
+		// arguments here are correct rather than an omission.
+		if err := httpServer.ServeTLS(httpLis, "", ""); err != nil && !errors.Is(err, stdhttp.ErrServerClosed) {
 			logf("local: http server stopped: %v", err)
 		}
 	}()
@@ -290,10 +314,10 @@ func portError(port int, err error) error {
 // answer is only accepted if it is in a range reserved for private networks.
 func lanURL(port int) string {
 	if ip := routableSourceAddress(); ip != "" {
-		return fmt.Sprintf("http://%s:%d", ip, port)
+		return fmt.Sprintf("https://%s:%d", ip, port)
 	}
 	if ip := firstPrivateAddress(); ip != "" {
-		return fmt.Sprintf("http://%s:%d", ip, port)
+		return fmt.Sprintf("https://%s:%d", ip, port)
 	}
 	return ""
 }

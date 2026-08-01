@@ -29,6 +29,7 @@ class SecureStorage {
 
   static const _kAccessToken = 'nexusvpn.access_token';
   static const _kRefreshToken = 'nexusvpn.refresh_token';
+  static const _kServerFingerprint = 'nexusvpn.serverFingerprint';
   static const _kServerUrl = 'nexusvpn.server_url';
   static const _kDevicePrivateKey = 'nexusvpn.device_private_key';
   static const _kDevicePublicKey = 'nexusvpn.device_public_key';
@@ -60,6 +61,15 @@ class SecureStorage {
       _storage.write(key: _kServerUrl, value: url);
 
   Future<String?> readServerUrl() => _storage.read(key: _kServerUrl);
+
+  /// The certificate this device was introduced to, and the only one it will
+  /// accept from that server. Stored beside the tokens because it is the same
+  /// kind of thing: what makes this device's session belong to that machine.
+  Future<void> saveServerFingerprint(String fingerprint) =>
+      _storage.write(key: _kServerFingerprint, value: fingerprint);
+
+  Future<String?> readServerFingerprint() =>
+      _storage.read(key: _kServerFingerprint);
 
   Future<void> saveDeviceKeypair({
     required String privateKey,

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'app_exception.dart';
 import 'models/models.dart';
 import 'secure_storage.dart';
+import 'pinned_client.dart';
 import 'server_url.dart';
 
 /// Default control-plane base URL, used only until the user points the app
@@ -30,7 +31,7 @@ class ApiClient {
         _baseUrl = baseUrl;
 
   final SecureStorage _storage;
-  final http.Client _http;
+  http.Client _http;
   String? _baseUrl;
 
   /// Completes once a prior in-flight refresh finishes, so concurrent 401s
@@ -46,6 +47,30 @@ class ApiClient {
     final stored = await _storage.readServerUrl();
     _baseUrl = (stored != null && stored.isNotEmpty) ? stored : kDefaultServerUrl;
     return _baseUrl!;
+  }
+
+  /// Reinstalls the stored pin, so a relaunched app is as particular about
+  /// which machine it talks to as the one that paired.
+  ///
+  /// Without this, every restart would fall back to ordinary verification,
+  /// which for a self-signed certificate means refusing to connect at all —
+  /// so the failure would at least be loud. It is called at startup anyway,
+  /// because relying on that would be relying on a bug.
+  Future<void> restorePin() async {
+    final stored = await _storage.readServerFingerprint();
+    if (stored != null && stored.isNotEmpty) {
+      _http = PinnedHttpClient.create(stored);
+    }
+  }
+
+  /// Installs the certificate this client will accept, and nothing else.
+  ///
+  /// The transport is rebuilt rather than reconfigured, because the pin is
+  /// fixed when the connection is made and an existing client would keep
+  /// using the old one for connections it had already opened.
+  Future<void> setServerFingerprint(String fingerprint) async {
+    _http = PinnedHttpClient.create(fingerprint);
+    await _storage.saveServerFingerprint(fingerprint);
   }
 
   Future<void> setBaseUrl(String url) async {

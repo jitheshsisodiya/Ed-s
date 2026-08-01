@@ -69,6 +69,19 @@ type NetworkState struct {
 type Config struct {
 	ServerURL string `json:"serverUrl"`
 
+	// ServerFingerprint is the SHA-256 of the certificate this installation
+	// was introduced to, and the only certificate it will accept from that
+	// server.
+	//
+	// A self-hosted control plane is a machine on somebody's desk. No
+	// certificate authority will vouch for 192.168.1.20, so the usual
+	// arrangement is unavailable — and this is stronger for the case anyway:
+	// it trusts exactly one key, learned from a QR code on a screen in the
+	// same room, rather than any of the hundreds of authorities a browser
+	// trusts. Empty means ordinary verification, for a deployment that has a
+	// real certificate.
+	ServerFingerprint string `json:"serverFingerprint,omitempty"`
+
 	AccessToken  string    `json:"accessToken,omitempty"`
 	RefreshToken string    `json:"refreshToken,omitempty"`
 	TokenExpiry  time.Time `json:"tokenExpiry,omitempty"`

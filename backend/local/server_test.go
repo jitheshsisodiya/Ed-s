@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 )
 
 // The whole point of this package is that it comes up with nothing
@@ -20,7 +19,7 @@ func TestLocalServerRunsWithNothingInstalled(t *testing.T) {
 	}
 
 	body := `{"email":"a@example.com","password":"correct-horse-battery","displayName":"A"}`
-	resp := post(t, srv.BaseURL+"/api/v1/auth/register", body)
+	resp := post(t, srv, srv.BaseURL+"/api/v1/auth/register", body)
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		t.Fatalf("register returned %d", resp.StatusCode)
 	}
@@ -30,7 +29,7 @@ func TestLocalServerRunsWithNothingInstalled(t *testing.T) {
 		t.Fatal("still reported as a first run after an account was created")
 	}
 
-	resp = post(t, srv.BaseURL+"/api/v1/auth/login",
+	resp = post(t, srv, srv.BaseURL+"/api/v1/auth/login",
 		`{"email":"a@example.com","password":"correct-horse-battery"}`)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -137,10 +136,9 @@ func start(t *testing.T) *Server {
 	return srv
 }
 
-func post(t *testing.T, url, body string) *http.Response {
+func post(t *testing.T, srv *Server, url, body string) *http.Response {
 	t.Helper()
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Post(url, "application/json", strings.NewReader(body))
+	resp, err := pinnedClient(t, srv).Post(url, "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("POST %s: %v", url, err)
 	}

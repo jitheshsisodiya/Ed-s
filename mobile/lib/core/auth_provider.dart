@@ -44,6 +44,9 @@ class AuthProvider extends ChangeNotifier {
   bool get isAuthenticated => status == AuthStatus.authenticated;
 
   Future<void> bootstrap() async {
+    // Before anything else: a request made without the pin would be made
+    // without it, and the first request after launch is a token refresh.
+    await api.restorePin();
     final refreshToken = await _storage.readRefreshToken();
     lastKnownEmail = await _storage.readLastUserEmail();
     if (refreshToken != null && refreshToken.isNotEmpty) {
@@ -116,6 +119,9 @@ class AuthProvider extends ChangeNotifier {
     errorMessage = null;
     notifyListeners();
     try {
+      // The pin goes in before the address is used, because claiming is the
+      // first request to that server and must already be refusing impostors.
+      await api.setServerFingerprint(parsed.fingerprint);
       await api.setBaseUrl(parsed.serverUrl);
       final claimed = await api.claimPairing(parsed.token);
       await _persistTokens(claimed.tokens, claimed.email);
