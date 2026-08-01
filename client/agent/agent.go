@@ -22,6 +22,8 @@ import (
 	"github.com/jitheshsisodiya/Ed-s/client/internal/config"
 	"github.com/jitheshsisodiya/Ed-s/client/internal/coordination"
 	"github.com/jitheshsisodiya/Ed-s/client/internal/disco"
+	"github.com/jitheshsisodiya/Ed-s/client/internal/killswitch"
+	"github.com/jitheshsisodiya/Ed-s/client/internal/netroute"
 	"github.com/jitheshsisodiya/Ed-s/client/internal/tunnel"
 	"github.com/jitheshsisodiya/Ed-s/client/internal/wireguard"
 )
@@ -117,9 +119,23 @@ func describeQuality(mode string, latencyMs int) string {
 	}
 }
 
+// Connection phases, in the words a frontend switches on. These mirror
+// tunnel.State exactly; they are restated here so a frontend never has to
+// import an internal package to know what it is looking at.
+const (
+	StateIdle        = "idle"
+	StateHandshaking = "handshaking"
+	StateActive      = "active"
+	StateDropped     = "dropped"
+)
+
 // Status is the live tunnel state.
 type Status struct {
-	Connected      bool   `json:"connected"`
+	Connected bool `json:"connected"`
+	// State is the connection phase: idle, handshaking, active or dropped.
+	// "dropped" is the only one that means something went wrong — a tunnel
+	// that was up and stopped being so without anyone asking.
+	State          string `json:"state"`
 	NetworkID      string `json:"networkId"`
 	NetworkName    string `json:"networkName"`
 	InterfaceName  string `json:"interfaceName"`
@@ -128,6 +144,17 @@ type Status struct {
 	NATType        string `json:"natType"`
 	PublicEndpoint string `json:"publicEndpoint"`
 	Peers          []Peer `json:"peers"`
+
+	// ExitNodeID is the peer currently carrying all of this machine's
+	// traffic, empty in the ordinary mesh shape where each peer only
+	// carries its own address.
+	ExitNodeID string `json:"exitNodeId"`
+	// KillSwitchEngaged reports that traffic outside the tunnel is being
+	// blocked right now.
+	KillSwitchEngaged bool `json:"killSwitchEngaged"`
+	// ActiveSince is when the tunnel last came up, RFC3339, empty when it
+	// is not up. Frontends render it as a session duration.
+	ActiveSince string `json:"activeSince"`
 }
 
 // ConnectOptions tunes a Connect call. The zero value is valid.
@@ -506,7 +533,12 @@ func (a *Agent) Connect(networkID string, opts ConnectOptions) error {
 		OSVersion:     runtime.GOARCH,
 		ClientVersion: opts.ClientVersion,
 		PublicKey:     cfg.Keypair.PublicKey,
-		Logf:          logf,
+		// Exit-node mode is opt-in and off until UseExitNode is called, but
+		// the machinery is wired now so turning it on never has to
+		// reconstruct the tunnel.
+		Router:     netroute.New(),
+		KillSwitch: killswitch.New(),
+		Logf:       logf,
 	})
 	if err != nil {
 		return abort(err)
@@ -603,14 +635,20 @@ func (a *Agent) Status() Status {
 
 	s := tun.Status()
 	out := Status{
-		Connected:      s.Connected,
-		NetworkID:      s.NetworkID,
-		NetworkName:    s.NetworkName,
-		InterfaceName:  s.InterfaceName,
-		VirtualIP:      s.VirtualIP,
-		CIDR:           s.CIDR,
-		NATType:        s.NATType,
-		PublicEndpoint: s.PublicEndpoint,
+		Connected:         s.Connected,
+		NetworkID:         s.NetworkID,
+		NetworkName:       s.NetworkName,
+		InterfaceName:     s.InterfaceName,
+		VirtualIP:         s.VirtualIP,
+		CIDR:              s.CIDR,
+		NATType:           s.NATType,
+		PublicEndpoint:    s.PublicEndpoint,
+		State:             string(s.State),
+		ExitNodeID:        s.ExitNodeID,
+		KillSwitchEngaged: s.KillSwitchEngaged,
+	}
+	if !s.ActiveSince.IsZero() {
+		out.ActiveSince = s.ActiveSince.UTC().Format(time.RFC3339)
 	}
 	for _, p := range s.Peers {
 		handshake := ""
@@ -747,4 +785,55 @@ type coordAdapter struct{ *coordination.Client }
 
 func (a coordAdapter) StreamPeerUpdates(ctx context.Context, deviceID string) (tunnel.PeerUpdateStream, error) {
 	return a.Client.StreamPeerUpdates(ctx, deviceID)
+}
+
+// --- exit-node mode ---
+
+// ExitNodeOptions configures routing every packet through one peer.
+type ExitNodeOptions struct {
+	// KillSwitch blocks traffic that would otherwise leave the machine in
+	// the clear if the tunnel drops. Off unless asked for: it is a promise
+	// to break someone's internet on their behalf.
+	KillSwitch bool `json:"killSwitch"`
+	// AllowLAN keeps the local subnet reachable while blocked. On by
+	// default, because cutting someone off from their own printer protects
+	// them from nothing.
+	AllowLAN bool `json:"allowLan"`
+}
+
+// UseExitNode routes all of this machine's traffic through a peer.
+//
+// This is the only mode in which NexusVPN changes what the rest of the
+// internet sees of you. In the ordinary mesh each peer gets its own address
+// and nothing else, so your public IP is untouched — a distinction the UI
+// has to keep straight, because "connected" means two very different things
+// on either side of it.
+func (a *Agent) UseExitNode(deviceID string, opts ExitNodeOptions) error {
+	a.mu.Lock()
+	tun := a.tun
+	a.mu.Unlock()
+	if tun == nil {
+		return fmt.Errorf("not connected")
+	}
+
+	id, err := uuid.Parse(deviceID)
+	if err != nil {
+		return fmt.Errorf("%q is not a device ID", deviceID)
+	}
+	return tun.SetExitNode(id, tunnel.ExitNodeOptions{
+		KillSwitch: opts.KillSwitch,
+		AllowLAN:   opts.AllowLAN,
+	})
+}
+
+// StopUsingExitNode restores ordinary split-tunnel routing and lifts any
+// block the kill switch was holding.
+func (a *Agent) StopUsingExitNode() error {
+	a.mu.Lock()
+	tun := a.tun
+	a.mu.Unlock()
+	if tun == nil {
+		return nil
+	}
+	return tun.ClearExitNode()
 }

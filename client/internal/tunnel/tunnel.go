@@ -12,6 +12,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/jitheshsisodiya/Ed-s/client/internal/holepunch"
+	"github.com/jitheshsisodiya/Ed-s/client/internal/killswitch"
+	"github.com/jitheshsisodiya/Ed-s/client/internal/netroute"
 	"github.com/jitheshsisodiya/Ed-s/client/internal/stun"
 
 	coordinationv1 "github.com/jitheshsisodiya/Ed-s/client/internal/coordination/gen"
@@ -65,6 +67,14 @@ type Options struct {
 	PunchTimeout        time.Duration
 	RenegotiateInterval time.Duration
 
+	// Router installs the host routes that make this tunnel carry the
+	// default route. Only needed for exit-node mode; nil disables it, so
+	// a client that never uses an exit node never touches host routing.
+	Router netroute.Router
+	// KillSwitch blocks unprotected traffic while an exit-node tunnel is
+	// down. Nil disables it.
+	KillSwitch killswitch.Switch
+
 	// Logf receives operational messages.
 	Logf func(format string, args ...any)
 }
@@ -78,6 +88,15 @@ type Tunnel struct {
 	disc   EndpointDiscoverer
 	prober holepunch.Prober
 	paths  PathProber
+
+	// router and killSwitch are only used by exit-node mode. Both are nil
+	// on a client that never turns it on, which is the default, so the
+	// ordinary mesh path never touches the host's routing or firewall.
+	router     netroute.Router
+	killSwitch killswitch.Switch
+
+	// exit holds what has to be undone when exit-node mode ends.
+	exit exitState
 
 	opts Options
 
@@ -99,6 +118,14 @@ type Tunnel struct {
 
 	started bool
 	logf    func(format string, args ...any)
+
+	// state is the connection phase the UI renders. It is stored rather
+	// than derived so the transition into dropped can be distinguished
+	// from never having connected — the same peer counts, very different
+	// things to say to a user.
+	stateMu     sync.Mutex
+	state       State
+	activeSince time.Time
 }
 
 // New builds a Tunnel. Call Start to run it.
@@ -134,6 +161,9 @@ func New(opts Options) (*Tunnel, error) {
 
 	return &Tunnel{
 		dev:                 opts.Device,
+		router:              opts.Router,
+		killSwitch:          opts.KillSwitch,
+		state:               StateIdle,
 		coord:               opts.Coordinator,
 		disc:                opts.Discoverer,
 		prober:              opts.Prober,
@@ -192,6 +222,8 @@ func (t *Tunnel) Start(ctx context.Context) error {
 	t.started = true
 	t.mu.Unlock()
 
+	t.setState(StateHandshaking)
+
 	var existingPeers []*coordinationv1.Peer
 	if !alreadyRegistered {
 		resp, err := t.Register(ctx)
@@ -218,7 +250,14 @@ func (t *Tunnel) Start(ctx context.Context) error {
 	go func() { defer wg.Done(); t.monitorLoop(ctx) }()
 	wg.Wait()
 
+	// Routing and firewall changes are undone before the peers go, so a
+	// machine whose tunnel is being torn down never sits with a captured
+	// default pointing at an interface that is already gone.
+	if err := t.ClearExitNode(); err != nil {
+		t.logf("exit node: could not fully restore routing: %v", err)
+	}
 	t.shutdownPeers()
+	t.setState(StateIdle)
 	return ctx.Err()
 }
 
@@ -459,6 +498,7 @@ func (t *Tunnel) monitorLoop(ctx context.Context) {
 			return
 		case <-ticker.C:
 			t.checkPeerHealth(ctx)
+			t.observeHealth()
 		}
 	}
 }
@@ -564,6 +604,13 @@ func (t *Tunnel) Status() Status {
 	}
 	for _, pr := range peers {
 		status.Peers = append(status.Peers, pr.snapshot(t.dev, t.paths))
+	}
+
+	status.State = t.State()
+	status.ActiveSince = t.ActiveSince()
+	status.KillSwitchEngaged = t.KillSwitchEngaged()
+	if id, ok := t.ExitNode(); ok {
+		status.ExitNodeID = id.String()
 	}
 	return status
 }

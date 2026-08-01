@@ -58,6 +58,7 @@ type PeerStatus struct {
 // Status is a snapshot of the whole tunnel.
 type Status struct {
 	Connected      bool
+	State          State
 	NetworkID      string
 	NetworkName    string
 	DeviceID       string
@@ -67,6 +68,15 @@ type Status struct {
 	NATType        string
 	PublicEndpoint string
 	Peers          []PeerStatus
+
+	// ExitNodeID is the peer carrying the default route, empty when
+	// traffic is split-tunnelled as usual.
+	ExitNodeID string
+	// KillSwitchEngaged reports that traffic outside the tunnel is
+	// currently blocked.
+	KillSwitchEngaged bool
+	// ActiveSince is when the tunnel last came up, zero when it is not up.
+	ActiveSince time.Time
 }
 
 // WireGuardDevice is the subset of *wireguard.Device the orchestrator uses,

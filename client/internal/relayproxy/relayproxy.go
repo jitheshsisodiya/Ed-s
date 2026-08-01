@@ -108,6 +108,12 @@ func (p *Proxy) LocalEndpoint() *net.UDPAddr {
 	return p.local.LocalAddr().(*net.UDPAddr)
 }
 
+// RemoteEndpoint is the relay's real UDP address — the one packets leave
+// the machine for. WireGuard only ever sees LocalEndpoint, so anything that
+// has to reason about what this host actually sends to the internet (a kill
+// switch's allow-list, a route pinned around the tunnel) has to ask here.
+func (p *Proxy) RemoteEndpoint() *net.UDPAddr { return p.opts.RelayAddr }
+
 // Bound reports whether the relay has acknowledged this device's BIND.
 func (p *Proxy) Bound() bool { return p.bound.Load() }
 
