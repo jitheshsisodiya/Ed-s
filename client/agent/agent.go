@@ -885,3 +885,25 @@ func prefixOf(n *net.IPNet) netip.Prefix {
 	ones, _ := n.Mask.Size()
 	return netip.PrefixFrom(addr.Unmap(), ones).Masked()
 }
+
+// Register creates an account on a server and signs into it.
+//
+// One call rather than two because on a fresh install they are one action:
+// nobody creates an account in order to not be signed in. It also means the
+// UI has one error path instead of the awkward middle state where the
+// account exists but the app still shows a sign-in form.
+func (a *Agent) Register(ctx context.Context, serverURL, email, password, displayName string) error {
+	serverURL = strings.TrimRight(strings.TrimSpace(serverURL), "/")
+	if serverURL == "" {
+		return fmt.Errorf("a server URL is required")
+	}
+	if email == "" || password == "" {
+		return fmt.Errorf("email and password are required")
+	}
+
+	client := apiclient.New(apiBaseURL(serverURL), apiclient.Options{})
+	if _, err := client.Register(ctx, email, password, displayName); err != nil {
+		return err
+	}
+	return a.Login(ctx, serverURL, email, password, "")
+}

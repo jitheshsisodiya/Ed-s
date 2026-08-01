@@ -169,6 +169,24 @@ export namespace main {
 	        this.error = source["error"];
 	    }
 	}
+	export class LocalServer {
+	    running: boolean;
+	    url: string;
+	    lanUrl: string;
+	    firstRun: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new LocalServer(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.running = source["running"];
+	        this.url = source["url"];
+	        this.lanUrl = source["lanUrl"];
+	        this.firstRun = source["firstRun"];
+	    }
+	}
 
 }
 

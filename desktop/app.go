@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"github.com/jitheshsisodiya/Ed-s/backend/local"
 	"github.com/jitheshsisodiya/Ed-s/client/agent"
 )
 
@@ -22,20 +25,97 @@ type App struct {
 	agent *agent.Agent
 	// startupErr is surfaced to the UI if the engine could not initialise.
 	startupErr string
+
+	// server is the control plane running inside this process, so a person
+	// with one machine and no patience for Docker still has somewhere for
+	// their accounts and networks to live. Nil when the app was pointed at
+	// a server somebody else runs.
+	server *local.Server
 }
 
 // NewApp creates the application.
 func NewApp() *App { return &App{} }
 
-// startup captures the Wails context and initialises the engine.
+// startup captures the Wails context, starts the built-in control plane and
+// initialises the engine.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
 	ag, err := agent.New()
 	if err != nil {
 		a.startupErr = fmt.Sprintf("could not open configuration: %v", err)
 		return
 	}
 	a.agent = ag
+
+	// The server comes up before the UI asks anything, so the sign-in
+	// screen is talking to something live by the time it renders. A
+	// failure here is not fatal: the app still works pointed at a server
+	// running somewhere else, which is what an organisation would do.
+	srv, err := local.Start(ctx, local.Options{
+		DataDir: dataDir(),
+		Logf: func(format string, args ...any) {
+			wailsruntime.EventsEmit(a.ctx, "tunnel:log", fmt.Sprintf(format, args...))
+		},
+	})
+	if err != nil {
+		a.startupErr = fmt.Sprintf("the built-in server did not start: %v", err)
+		return
+	}
+	a.server = srv
+}
+
+// dataDir is where this installation keeps its accounts, networks and keys:
+// %APPDATA%\NexusVPN on Windows, ~/.config/NexusVPN elsewhere. Falling back
+// to the working directory would scatter data wherever the app happened to
+// be launched from.
+func dataDir() string {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "nexusvpn-data"
+		}
+		base = filepath.Join(home, ".config")
+	}
+	return filepath.Join(base, "NexusVPN")
+}
+
+// LocalServer describes the control plane running inside this app, so the UI
+// can prefill its own address and tell the user what to give other machines.
+type LocalServer struct {
+	// Running reports whether the built-in server came up.
+	Running bool `json:"running"`
+	// URL is what this machine should use.
+	URL string `json:"url"`
+	// LANURL is what other machines on this network should use, empty if
+	// this machine has no routable address.
+	LANURL string `json:"lanUrl"`
+	// FirstRun reports that no account exists yet, so the UI offers to
+	// create one instead of asking for a password nobody has set.
+	FirstRun bool `json:"firstRun"`
+}
+
+// GetLocalServer reports the built-in control plane's state.
+func (a *App) GetLocalServer() LocalServer {
+	if a.server == nil {
+		return LocalServer{}
+	}
+	return LocalServer{
+		Running:  true,
+		URL:      a.server.BaseURL,
+		LANURL:   a.server.LANURL,
+		FirstRun: a.server.IsFirstRun(),
+	}
+}
+
+// Register creates the first account and signs into it, which on a fresh
+// install is one action rather than two.
+func (a *App) Register(serverURL, email, password, displayName string) error {
+	if err := a.ready(); err != nil {
+		return err
+	}
+	return a.agent.Register(a.ctx, serverURL, email, password, displayName)
 }
 
 // shutdown stops any running tunnel so the app never leaves a configured
@@ -43,6 +123,11 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) shutdown(context.Context) {
 	if a.agent != nil {
 		a.agent.Disconnect()
+	}
+	// Stopped after the tunnel, so a device that is disconnecting can still
+	// tell the control plane it is going.
+	if a.server != nil {
+		a.server.Stop()
 	}
 }
 

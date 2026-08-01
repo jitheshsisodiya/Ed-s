@@ -12,10 +12,10 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	coordinationv1 "github.com/jitheshsisodiya/Ed-s/backend/gen/coordination/v1"
 	"github.com/jitheshsisodiya/Ed-s/backend/internal/domain"
 	"github.com/jitheshsisodiya/Ed-s/backend/internal/metrics"
 	"github.com/jitheshsisodiya/Ed-s/backend/internal/usecase"
+	coordinationv1 "github.com/jitheshsisodiya/Ed-s/protogen/coordination/v1"
 )
 
 // CoordinationServer adapts usecase.CoordinationService to the gRPC contract.

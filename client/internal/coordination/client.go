@@ -18,7 +18,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
-	coordinationv1 "github.com/jitheshsisodiya/Ed-s/client/internal/coordination/gen"
+	coordinationv1 "github.com/jitheshsisodiya/Ed-s/protogen/coordination/v1"
 )
 
 // TokenSource supplies the bearer token to attach to outgoing RPCs (the

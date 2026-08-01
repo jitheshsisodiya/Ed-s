@@ -13,6 +13,8 @@ export function Disconnect():Promise<void>;
 
 export function GetAppInfo():Promise<main.AppInfo>;
 
+export function GetLocalServer():Promise<main.LocalServer>;
+
 export function GetSession():Promise<agent.Session>;
 
 export function GetStatus():Promise<agent.Status>;
@@ -26,6 +28,8 @@ export function ListNetworks():Promise<Array<agent.Network>>;
 export function Login(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function Logout():Promise<void>;
+
+export function Register(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function RotateDeviceKey():Promise<string>;
 

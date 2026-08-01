@@ -336,3 +336,147 @@ func page[T any](rows []*T, limit, offset int, match func(*T) bool) []*T {
 	}
 	return out
 }
+
+/* ---------- relay servers ---------- */
+
+// Relays returns the RelayServerRepository view.
+//
+// A local install normally has no relay at all: every machine is on the
+// same network or reachable directly, and a relay only earns its place when
+// two peers cannot see each other. The repository exists so the same code
+// paths run, and stays empty until somebody registers one.
+func (s *Store) Relays() domain.RelayServerRepository { return relayRepo{s} }
+
+type relayRepo struct{ s *Store }
+
+func (r relayRepo) Create(_ context.Context, rs *domain.RelayServer) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	if rs.ID == uuid.Nil {
+		rs.ID = uuid.New()
+	}
+	rs.CreatedAt = time.Now().UTC()
+	r.s.relays[rs.ID] = clone(rs)
+	r.s.touch()
+	return nil
+}
+
+// Upsert keys on the public endpoint so a relay that restarts reclaims its
+// row instead of leaving a dead duplicate behind for the allocator to pick.
+func (r relayRepo) Upsert(_ context.Context, rs *domain.RelayServer) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+
+	for _, existing := range r.s.relays {
+		if existing.Hostname == rs.Hostname && existing.RelayPort == rs.RelayPort {
+			rs.ID = existing.ID
+			rs.CreatedAt = existing.CreatedAt
+			r.s.relays[existing.ID] = clone(rs)
+			r.s.touch()
+			return nil
+		}
+	}
+	if rs.ID == uuid.Nil {
+		rs.ID = uuid.New()
+	}
+	rs.CreatedAt = time.Now().UTC()
+	r.s.relays[rs.ID] = clone(rs)
+	r.s.touch()
+	return nil
+}
+
+func (r relayRepo) GetByID(_ context.Context, id uuid.UUID) (*domain.RelayServer, error) {
+	r.s.mu.RLock()
+	defer r.s.mu.RUnlock()
+	rs, ok := r.s.relays[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return clone(rs), nil
+}
+
+func (r relayRepo) ListActive(_ context.Context) ([]*domain.RelayServer, error) {
+	r.s.mu.RLock()
+	defer r.s.mu.RUnlock()
+	var out []*domain.RelayServer
+	for _, rs := range r.s.relays {
+		if isRelayHealthy(rs) {
+			out = append(out, clone(rs))
+		}
+	}
+	return out, nil
+}
+
+func (r relayRepo) PickLeastLoaded(_ context.Context, preferredRegion string) (*domain.RelayServer, error) {
+	r.s.mu.RLock()
+	defer r.s.mu.RUnlock()
+
+	var best *domain.RelayServer
+	for _, rs := range r.s.relays {
+		if !isRelayHealthy(rs) || rs.CurrentLoad >= rs.Capacity {
+			continue
+		}
+		// The preferred region wins outright; among equals, the emptiest
+		// node. Load is compared as a fraction so a small relay and a large
+		// one are judged on how full they are, not how many sessions they
+		// happen to hold.
+		if best == nil ||
+			(rs.Region == preferredRegion && best.Region != preferredRegion) ||
+			(((rs.Region == preferredRegion) == (best.Region == preferredRegion)) &&
+				loadFraction(rs) < loadFraction(best)) {
+			best = rs
+		}
+	}
+	if best == nil {
+		return nil, domain.ErrNoRelayAvailable
+	}
+	return clone(best), nil
+}
+
+func (r relayRepo) IncrementLoad(_ context.Context, id uuid.UUID, delta int) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	rs, ok := r.s.relays[id]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	rs.CurrentLoad += delta
+	if rs.CurrentLoad < 0 {
+		rs.CurrentLoad = 0
+	}
+	r.s.touch()
+	return nil
+}
+
+func (r relayRepo) Heartbeat(_ context.Context, id uuid.UUID, load int) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	rs, ok := r.s.relays[id]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	now := time.Now().UTC()
+	rs.CurrentLoad = load
+	rs.LastHeartbeatAt = &now
+	r.s.touch()
+	return nil
+}
+
+// relayStaleAfter is how long a relay may go without a heartbeat before it
+// stops being offered. Allocating to a node that died two minutes ago sends
+// a client somewhere that will never answer.
+const relayStaleAfter = 90 * time.Second
+
+func isRelayHealthy(rs *domain.RelayServer) bool {
+	if rs.Status != "" && rs.Status != "active" && rs.Status != "healthy" {
+		return false
+	}
+	return rs.LastHeartbeatAt != nil && time.Since(*rs.LastHeartbeatAt) < relayStaleAfter
+}
+
+func loadFraction(rs *domain.RelayServer) float64 {
+	if rs.Capacity <= 0 {
+		return 1
+	}
+	return float64(rs.CurrentLoad) / float64(rs.Capacity)
+}

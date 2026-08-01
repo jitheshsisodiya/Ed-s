@@ -20,7 +20,7 @@ import (
 	"github.com/jitheshsisodiya/Ed-s/client/internal/stun"
 	"github.com/jitheshsisodiya/Ed-s/client/internal/wireguard"
 
-	coordinationv1 "github.com/jitheshsisodiya/Ed-s/client/internal/coordination/gen"
+	coordinationv1 "github.com/jitheshsisodiya/Ed-s/protogen/coordination/v1"
 )
 
 // ConnectionMode describes how traffic currently reaches a peer.

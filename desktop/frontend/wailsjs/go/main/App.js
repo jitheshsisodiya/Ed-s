@@ -22,6 +22,10 @@ export function GetAppInfo() {
   return window['go']['main']['App']['GetAppInfo']();
 }
 
+export function GetLocalServer() {
+  return window['go']['main']['App']['GetLocalServer']();
+}
+
 export function GetSession() {
   return window['go']['main']['App']['GetSession']();
 }
@@ -48,6 +52,10 @@ export function Login(arg1, arg2, arg3, arg4) {
 
 export function Logout() {
   return window['go']['main']['App']['Logout']();
+}
+
+export function Register(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['Register'](arg1, arg2, arg3, arg4);
 }
 
 export function RotateDeviceKey() {

@@ -16,7 +16,7 @@ import (
 	"github.com/jitheshsisodiya/Ed-s/client/internal/netroute"
 	"github.com/jitheshsisodiya/Ed-s/client/internal/stun"
 
-	coordinationv1 "github.com/jitheshsisodiya/Ed-s/client/internal/coordination/gen"
+	coordinationv1 "github.com/jitheshsisodiya/Ed-s/protogen/coordination/v1"
 )
 
 // Defaults for the orchestrator's timers.

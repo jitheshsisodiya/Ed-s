@@ -8,12 +8,14 @@ import {
   CreateNetwork,
   Disconnect,
   GetAppInfo,
+  GetLocalServer,
   GetSession,
   GetStatus,
   JoinNetwork,
   ListNetworks,
   Login,
   Logout,
+  Register,
   RotateDeviceKey,
   SetDeviceName,
   StopUsingExitNode,
@@ -21,7 +23,7 @@ import {
 } from '../wailsjs/go/main/App';
 import { EventsOff, EventsOn } from '../wailsjs/runtime/runtime';
 import { Quit } from '../wailsjs/runtime/runtime';
-import type { agent } from '../wailsjs/go/models';
+import type { agent, main } from '../wailsjs/go/models';
 
 import Dialog, { Danger, Input, Primary, Row, Secondary, Toggle } from './Dialog';
 import Invite from './Invite';
@@ -64,6 +66,8 @@ export default function App() {
   const [history, setHistory] = useState<Sample[]>([]);
   const previous = useRef<{ sent: number; recv: number } | null>(null);
 
+  const [server, setServer] = useState<main.LocalServer | null>(null);
+
   const [lastNetwork, setLastNetwork] = usePreference('nexusvpn.lastNetwork', '');
   const [killSwitchPref, setKillSwitchPref] = usePreference('nexusvpn.killSwitch', 'on');
   const [allowLanPref, setAllowLanPref] = usePreference('nexusvpn.allowLan', 'on');
@@ -78,6 +82,7 @@ export default function App() {
         if (info.error) setError({ message: info.error });
       })
       .catch((err) => setError(humanError(err)));
+    GetLocalServer().then(setServer).catch(() => undefined);
     refreshSession().catch((err) => setError(humanError(err)));
   }, [refreshSession]);
 
@@ -201,6 +206,7 @@ export default function App() {
         busy={busy}
         run={run}
         error={error}
+        server={server}
         onDismissError={() => setError(null)}
         onDone={refreshSession}
         defaultServer={session.serverUrl}
@@ -871,6 +877,7 @@ function Access({
   busy,
   run,
   error,
+  server,
   onDismissError,
   onDone,
   defaultServer,
@@ -878,26 +885,41 @@ function Access({
   busy: boolean;
   run: (fn: () => Promise<void>) => Promise<void>;
   error: { message: string; fix?: string } | null;
+  server: main.LocalServer | null;
   onDismissError: () => void;
   onDone: () => Promise<void>;
   defaultServer: string;
 }) {
-  // A fresh install has no server, and you cannot sign in without one. So
-  // the field is shown, not hidden behind a disclosure: collapsing a
-  // mandatory field guarantees the first attempt fails, and the previous
-  // build failed it silently.
-  const [server, setServer] = useState(defaultServer || DEFAULT_SERVER);
-  const [showServer, setShowServer] = useState(defaultServer === '');
+  // With the built-in server running there is nothing to configure, and on
+  // a fresh install there is nobody to sign in as — so this screen asks to
+  // create an account and never mentions an address at all. The field
+  // appears only for somebody pointing at a server they did not start.
+  const local = server?.running ?? false;
+  const [creating, setCreating] = useState(server?.firstRun ?? false);
+  const [address, setAddress] = useState(defaultServer || server?.url || DEFAULT_SERVER);
+  const [showServer, setShowServer] = useState(!local && defaultServer === '');
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mfa, setMfa] = useState('');
   const [needsMfa, setNeedsMfa] = useState(false);
 
+  useEffect(() => {
+    if (!server?.running) return;
+    setCreating(server.firstRun);
+    if (!defaultServer) setAddress(server.url);
+  }, [server, defaultServer]);
+
   const submit = (e: FormEvent) => {
     e.preventDefault();
     void run(async () => {
+      if (creating) {
+        await Register(address, email, password, name || email);
+        await onDone();
+        return;
+      }
       try {
-        await Login(server, email, password, mfa);
+        await Login(address, email, password, mfa);
       } catch (err) {
         if (String(err).includes('mfa_required')) {
           setNeedsMfa(true);
@@ -922,7 +944,9 @@ function Access({
           Nexus<span className="text-live">VPN</span>
         </p>
         <p className="mb-5 mt-1.5 text-[12px] text-ink-dim">
-          Your machines, on one network, wherever they are.
+          {creating
+            ? 'Set up an account on this machine. It stays here — nothing is sent anywhere.'
+            : 'Your machines, on one network, wherever they are.'}
         </p>
 
         <AnimatePresence>
@@ -951,6 +975,12 @@ function Access({
         </AnimatePresence>
 
         <div className="grid gap-3">
+          {creating && (
+            <label className="grid gap-1">
+              <span className="eyebrow">Your name</span>
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Jithesh" />
+            </label>
+          )}
           <label className="grid gap-1">
             <span className="eyebrow">Email</span>
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
@@ -977,23 +1007,22 @@ function Access({
             <label className="grid gap-1">
               <span className="eyebrow">Server</span>
               <Input
-                value={server}
-                onChange={(e) => setServer(e.target.value)}
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
                 placeholder={DEFAULT_SERVER}
                 required
               />
               <span className="text-[11px] leading-relaxed text-ink-faint">
-                Where your NexusVPN server is running. If you started it on this machine with
-                Docker, the address above is correct.
+                Where the NexusVPN server is running.
               </span>
             </label>
           ) : (
             <button
               type="button"
               onClick={() => setShowServer(true)}
-              className="justify-self-start border border-deck-line-bright px-2 py-1 font-mono text-[10px] tracking-[0.12em] uppercase text-ink-dim transition-colors hover:border-live hover:text-live"
+              className="justify-self-start font-mono text-[10px] tracking-[0.12em] uppercase text-ink-faint transition-colors hover:text-live"
             >
-              change server
+              use a different server
             </button>
           )}
 
@@ -1002,8 +1031,26 @@ function Access({
             disabled={busy}
             className="mt-1 border border-live/50 bg-live/12 py-2 font-mono text-[11px] font-semibold tracking-[0.16em] uppercase text-live transition-colors hover:bg-live/22 disabled:opacity-40"
           >
-            {busy ? 'authenticating' : 'sign in'}
+            {busy ? (creating ? 'creating' : 'authenticating') : creating ? 'create account' : 'sign in'}
           </button>
+
+          {/* The other mode is always one click away: a returning user on a
+              machine whose store was wiped needs sign-in, and somebody
+              joining a colleague's server needs create-account. */}
+          <button
+            type="button"
+            onClick={() => setCreating((v: boolean) => !v)}
+            className="font-mono text-[10px] tracking-[0.12em] uppercase text-ink-faint transition-colors hover:text-live"
+          >
+            {creating ? 'i already have an account' : 'create an account'}
+          </button>
+
+          {local && server?.lanUrl && (
+            <p className="mt-1 text-[11px] leading-relaxed text-ink-faint">
+              Other machines on your network join this one at{' '}
+              <span className="font-mono text-ink-dim">{server.lanUrl}</span>
+            </p>
+          )}
         </div>
       </motion.form>
     </div>

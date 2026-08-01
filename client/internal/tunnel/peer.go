@@ -13,7 +13,7 @@ import (
 	"github.com/jitheshsisodiya/Ed-s/client/internal/relayproxy"
 	"github.com/jitheshsisodiya/Ed-s/client/internal/wireguard"
 
-	coordinationv1 "github.com/jitheshsisodiya/Ed-s/client/internal/coordination/gen"
+	coordinationv1 "github.com/jitheshsisodiya/Ed-s/protogen/coordination/v1"
 )
 
 // HandshakeStaleAfter is how long without a WireGuard handshake before a

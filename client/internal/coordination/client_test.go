@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/test/bufconn"
 
-	coordinationv1 "github.com/jitheshsisodiya/Ed-s/client/internal/coordination/gen"
+	coordinationv1 "github.com/jitheshsisodiya/Ed-s/protogen/coordination/v1"
 )
 
 // fakeCoordinationServer is an in-process implementation of
