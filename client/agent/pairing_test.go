@@ -67,7 +67,7 @@ func TestParsePairingLink(t *testing.T) {
 // server at all. The desktop app talks to its own control plane on
 // 127.0.0.1, which on a phone means the phone.
 func TestReachableServerURLReplacesLoopback(t *testing.T) {
-	lan := lanAddress()
+	lan := LANAddress()
 	if lan == "" {
 		t.Skip("this machine has no routable address to substitute")
 	}

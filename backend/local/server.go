@@ -22,6 +22,7 @@ import (
 	stdhttp "net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -276,10 +277,47 @@ func portError(port int, err error) error {
 		"another program is probably already using it: %w", port, err)
 }
 
-// lanURL finds this machine's routable address, which is what other machines
-// have to be pointed at. Loopback and link-local are skipped because neither
-// is reachable from anywhere else.
+// lanURL is the address other machines have to be pointed at.
+//
+// Which is not "the first interface that is up". Radmin VPN, Hamachi,
+// VirtualBox, WSL and NexusVPN's own tunnel all present interfaces that are
+// up and not loopback, carrying addresses nothing on the Wi-Fi can reach, and
+// this string is shown to somebody as where to send their other machines. One
+// user was handed a Radmin address in 26.0.0.0/8 that way — real, routable,
+// publicly allocated space Radmin squats on, and nowhere near their LAN.
+//
+// So the operating system is asked which address it would send from, and the
+// answer is only accepted if it is in a range reserved for private networks.
 func lanURL(port int) string {
+	if ip := routableSourceAddress(); ip != "" {
+		return fmt.Sprintf("http://%s:%d", ip, port)
+	}
+	if ip := firstPrivateAddress(); ip != "" {
+		return fmt.Sprintf("http://%s:%d", ip, port)
+	}
+	return ""
+}
+
+// routableSourceAddress reads the routing table's own answer. The UDP
+// "connection" sends nothing — connect on a datagram socket only fixes the
+// peer and picks a route — so this reaches no network and needs none.
+func routableSourceAddress() string {
+	conn, err := net.DialTimeout("udp4", "192.0.2.1:9", 2*time.Second)
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+
+	addr, ok := conn.LocalAddr().(*net.UDPAddr)
+	if !ok || addr.IP == nil || !isPrivateIPv4(addr.IP) {
+		return ""
+	}
+	return addr.IP.String()
+}
+
+// firstPrivateAddress is the fallback for a machine with no route out, which
+// can still be the one hosting a network in a room with no internet.
+func firstPrivateAddress() string {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return ""
@@ -288,23 +326,44 @@ func lanURL(port int) string {
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
 			continue
 		}
+		// NexusVPN's own tunnel carries a private address too, so it would
+		// otherwise be a candidate for "where other machines can reach this
+		// one" — which is circular: a machine that is not on the network yet
+		// cannot use an address that only exists on it.
+		if strings.HasPrefix(strings.ToLower(iface.Name), "nexus") {
+			continue
+		}
 		addrs, err := iface.Addrs()
 		if err != nil {
 			continue
 		}
 		for _, addr := range addrs {
-			n, ok := addr.(*net.IPNet)
-			if !ok {
-				continue
+			if n, ok := addr.(*net.IPNet); ok && isPrivateIPv4(n.IP) {
+				return n.IP.To4().String()
 			}
-			ip := n.IP.To4()
-			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
-				continue
-			}
-			return fmt.Sprintf("http://%s:%d", ip, port)
 		}
 	}
 	return ""
+}
+
+// isPrivateIPv4 reports whether an address is on a network somebody's other
+// machines could actually be sitting on. Narrower than "not public" on
+// purpose: 26.0.0.0/8 is public space another VPN squats on, and offering one
+// of its addresses as this machine's is how this went wrong before.
+func isPrivateIPv4(ip net.IP) bool {
+	v4 := ip.To4()
+	if v4 == nil || v4.IsLoopback() || v4.IsLinkLocalUnicast() {
+		return false
+	}
+	switch {
+	case v4[0] == 10:
+		return true // 10.0.0.0/8
+	case v4[0] == 172 && v4[1] >= 16 && v4[1] <= 31:
+		return true // 172.16.0.0/12
+	case v4[0] == 192 && v4[1] == 168:
+		return true // 192.168.0.0/16
+	}
+	return false
 }
 
 /* ---------- secrets ---------- */

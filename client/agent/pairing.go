@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/url"
 	"strings"
 
@@ -137,7 +136,7 @@ func reachableServerURL(raw string) string {
 	if host != "127.0.0.1" && host != "localhost" && host != "::1" {
 		return raw
 	}
-	lan := lanAddress()
+	lan := LANAddress()
 	if lan == "" {
 		return raw
 	}
@@ -147,35 +146,4 @@ func reachableServerURL(raw string) string {
 		u.Host = lan
 	}
 	return u.String()
-}
-
-// lanAddress returns this machine's routable IPv4 address, or empty if it
-// has none. Loopback and link-local are skipped: neither is reachable from
-// another machine, which is the only thing this is for.
-func lanAddress() string {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return ""
-	}
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-		for _, addr := range addrs {
-			n, ok := addr.(*net.IPNet)
-			if !ok {
-				continue
-			}
-			ip := n.IP.To4()
-			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
-				continue
-			}
-			return ip.String()
-		}
-	}
-	return ""
 }
