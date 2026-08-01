@@ -7,6 +7,7 @@ go 1.25.0
 replace github.com/jitheshsisodiya/Ed-s/client => ../client
 
 require (
+	github.com/energye/systray v1.0.3
 	github.com/jitheshsisodiya/Ed-s/backend v0.0.0-20260801094347-32027f6efa17
 	github.com/jitheshsisodiya/Ed-s/client v0.0.0-00010101000000-000000000000
 	github.com/wailsapp/wails/v2 v2.13.0

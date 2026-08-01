@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertTriangle, Bell, KeyRound, ShieldAlert, Sliders, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  Bell,
+  KeyRound,
+  Link2,
+  Server,
+  ShieldAlert,
+  Sliders,
+  X,
+} from 'lucide-react';
 
 import {
   Connect,
@@ -10,6 +19,7 @@ import {
   GetAppInfo,
   GetLocalServer,
   GetSession,
+  GetStartWithSystem,
   GetStatus,
   JoinNetwork,
   ListNetworks,
@@ -17,7 +27,9 @@ import {
   Logout,
   Register,
   RotateDeviceKey,
+  SetServerRole,
   SetDeviceName,
+  SetStartWithSystem,
   StopUsingExitNode,
   UseExitNode,
 } from '../wailsjs/go/main/App';
@@ -197,6 +209,22 @@ export default function App() {
       <div className="grid h-full place-items-center bg-deck-900">
         <span className="eyebrow">Initialising</span>
       </div>
+    );
+  }
+
+  if (server && !server.chosen) {
+    return (
+      <ChooseRole
+        busy={busy}
+        onChoose={(host) =>
+          run(async () => {
+            await SetServerRole(host);
+            setServer(await GetLocalServer());
+          })
+        }
+        error={error}
+        onDismissError={() => setError(null)}
+      />
     );
   }
 
@@ -757,6 +785,24 @@ function SettingsDialog({
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<'general' | 'routing' | 'diagnostics'>('general');
+  const [startup, setStartup] = useState<main.StartupPref | null>(null);
+  const [startupErr, setStartupErr] = useState('');
+
+  useEffect(() => {
+    GetStartWithSystem().then(setStartup).catch(() => setStartup(null));
+  }, []);
+
+  const changeStartup = (on: boolean) => {
+    // Optimistic, then re-read: the answer that matters is what is actually
+    // registered with the system, not what was asked for.
+    setStartup((p) => (p ? { ...p, enabled: on } : p));
+    setStartupErr('');
+    SetStartWithSystem(on)
+      .catch((e) => setStartupErr(String(e)))
+      .finally(() => {
+        GetStartWithSystem().then(setStartup).catch(() => {});
+      });
+  };
 
   return (
     <Dialog
@@ -796,6 +842,27 @@ function SettingsDialog({
                 <Fact label="This machine" value={session.deviceName} />
                 <Fact label="Version" value={version} mono />
               </Group>
+              {startup?.supported && (
+                <Group title="Starting up">
+                  <Toggle
+                    checked={startup.enabled}
+                    onChange={changeStartup}
+                    label={
+                      startup.enabled
+                        ? 'Starts when you sign in'
+                        : 'Does not start when you sign in'
+                    }
+                  />
+                  <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-faint">
+                    Opens straight to the notification area, not a window. Worth leaving on if
+                    this machine is the server &mdash; nobody else can reach the network while it
+                    is not running.
+                  </p>
+                  {startupErr && (
+                    <p className="mt-1.5 text-[11.5px] leading-relaxed text-fail">{startupErr}</p>
+                  )}
+                </Group>
+              )}
               <Group title="Device key">
                 <p className="mb-2 text-[11.5px] leading-relaxed text-ink-dim">
                   The private half never leaves this machine. Rotating disconnects the tunnel and
@@ -870,6 +937,133 @@ function SettingsDialog({
 }
 
 /* ============================================================
+   First run: what is this machine for?
+   ============================================================ */
+
+/**
+ * Asked once, before anything binds a port.
+ *
+ * Both answers are correct and only the person installing knows which they
+ * mean, so it is a question rather than something inferred. Inferring it —
+ * hosting whenever port 8080 happens to be free, say — would leave an office
+ * of ten machines quietly running ten servers, each with its own accounts,
+ * none able to see the others.
+ */
+function ChooseRole({
+  busy,
+  error,
+  onChoose,
+  onDismissError,
+}: {
+  busy: boolean;
+  error: { message: string; fix?: string } | null;
+  onChoose: (host: boolean) => void;
+  onDismissError: () => void;
+}) {
+  return (
+    <div className="grid-field grid h-full place-items-center bg-deck-900 p-8">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="panel ticked w-full max-w-[420px] p-6"
+      >
+        <p className="font-mono text-[13px] font-semibold tracking-[0.22em] uppercase text-ink">
+          Nexus<span className="text-live">VPN</span>
+        </p>
+        <p className="mb-5 mt-1.5 text-[12px] leading-relaxed text-ink-dim">
+          One machine holds the accounts and networks, and the others connect to it.
+          Which is this?
+        </p>
+
+        {error && (
+          <div className="mb-4 flex items-start gap-2.5 border border-fail/45 bg-fail/10 p-2.5" role="alert">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0 text-fail" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[12px] text-ink">{error.message}</p>
+              {error.fix && <p className="mt-0.5 text-[11.5px] text-ink-dim">{error.fix}</p>}
+            </div>
+            <button onClick={onDismissError} className="text-ink-faint hover:text-ink" aria-label="Dismiss">
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
+        <div className="grid gap-2.5">
+          <RoleCard
+            title="This machine is the server"
+            body="Accounts and networks live here. Other machines join this one. It needs to be switched on for them to connect."
+            action="Host here"
+            busy={busy}
+            onClick={() => onChoose(true)}
+            primary
+          />
+          <RoleCard
+            title="Join a server someone else runs"
+            body="Somebody has already set one up — a colleague's machine, or your own on another PC. You will need its address."
+            action="Join one"
+            busy={busy}
+            onClick={() => onChoose(false)}
+          />
+        </div>
+
+        <p className="mt-4 text-[11px] leading-relaxed text-ink-faint">
+          You can change this later; it is not a decision you are stuck with.
+        </p>
+      </motion.div>
+    </div>
+  );
+}
+
+function RoleCard({
+  title,
+  body,
+  action,
+  busy,
+  primary,
+  onClick,
+}: {
+  title: string;
+  body: string;
+  action: string;
+  busy: boolean;
+  primary?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      className={`ticked group border p-3.5 text-left transition-colors disabled:opacity-50 ${
+        primary
+          ? 'border-live/45 bg-live/8 hover:bg-live/14'
+          : 'border-deck-line hover:border-deck-line-bright hover:bg-deck-700/50'
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        {primary ? (
+          <Server size={14} className="shrink-0 text-live" aria-hidden="true" />
+        ) : (
+          <Link2 size={14} className="shrink-0 text-ink-dim" aria-hidden="true" />
+        )}
+        <span className={`text-[13px] font-medium ${primary ? 'text-live' : 'text-ink'}`}>
+          {title}
+        </span>
+      </div>
+      <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-faint">{body}</p>
+      <span
+        className={`mt-2.5 inline-block font-mono text-[10px] tracking-[0.14em] uppercase ${
+          primary ? 'text-live' : 'text-ink-dim'
+        }`}
+      >
+        {action} →
+      </span>
+    </button>
+  );
+}
+
+/* ============================================================
    Access
    ============================================================ */
 
@@ -895,9 +1089,10 @@ function Access({
   // create an account and never mentions an address at all. The field
   // appears only for somebody pointing at a server they did not start.
   const local = server?.running ?? false;
+  const joining = (server?.chosen ?? false) && !(server?.host ?? false);
   const [creating, setCreating] = useState(server?.firstRun ?? false);
   const [address, setAddress] = useState(defaultServer || server?.url || DEFAULT_SERVER);
-  const [showServer, setShowServer] = useState(!local && defaultServer === '');
+  const [showServer, setShowServer] = useState(joining || (!local && defaultServer === ''));
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

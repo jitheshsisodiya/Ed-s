@@ -16,6 +16,10 @@ func main() {
 	app := NewApp()
 
 	// Create application with options
+	// The tray runs alongside Wails on its own goroutine. It is started
+	// before Run because Run blocks for the lifetime of the app.
+	go startTray(app)
+
 	err := wails.Run(&options.App{
 		Title:     "NexusVPN",
 		Width:     860,
@@ -30,6 +34,11 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 0x05, G: 0x08, B: 0x0F, A: 1},
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
+		// Closing the window hides it rather than quitting: this app may be
+		// serving other machines, and an X is not a request to disconnect
+		// them. Quit lives in the tray menu.
+		OnBeforeClose:     app.beforeClose,
+		HideWindowOnClose: true,
 		Bind: []interface{}{
 			app,
 		},

@@ -170,6 +170,8 @@ export namespace main {
 	    }
 	}
 	export class LocalServer {
+	    chosen: boolean;
+	    host: boolean;
 	    running: boolean;
 	    url: string;
 	    lanUrl: string;
@@ -181,10 +183,26 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.chosen = source["chosen"];
+	        this.host = source["host"];
 	        this.running = source["running"];
 	        this.url = source["url"];
 	        this.lanUrl = source["lanUrl"];
 	        this.firstRun = source["firstRun"];
+	    }
+	}
+	export class StartupPref {
+	    supported: boolean;
+	    enabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new StartupPref(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.supported = source["supported"];
+	        this.enabled = source["enabled"];
 	    }
 	}
 

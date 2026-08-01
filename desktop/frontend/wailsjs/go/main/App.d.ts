@@ -17,7 +17,11 @@ export function GetLocalServer():Promise<main.LocalServer>;
 
 export function GetSession():Promise<agent.Session>;
 
+export function GetStartWithSystem():Promise<main.StartupPref>;
+
 export function GetStatus():Promise<agent.Status>;
+
+export function HideWindow():Promise<void>;
 
 export function InviteLink(arg1:string):Promise<string>;
 
@@ -34,6 +38,12 @@ export function Register(arg1:string,arg2:string,arg3:string,arg4:string):Promis
 export function RotateDeviceKey():Promise<string>;
 
 export function SetDeviceName(arg1:string):Promise<void>;
+
+export function SetServerRole(arg1:boolean):Promise<void>;
+
+export function SetStartWithSystem(arg1:boolean):Promise<void>;
+
+export function ShowWindow():Promise<void>;
 
 export function StopUsingExitNode():Promise<void>;
 

@@ -30,8 +30,16 @@ export function GetSession() {
   return window['go']['main']['App']['GetSession']();
 }
 
+export function GetStartWithSystem() {
+  return window['go']['main']['App']['GetStartWithSystem']();
+}
+
 export function GetStatus() {
   return window['go']['main']['App']['GetStatus']();
+}
+
+export function HideWindow() {
+  return window['go']['main']['App']['HideWindow']();
 }
 
 export function InviteLink(arg1) {
@@ -64,6 +72,18 @@ export function RotateDeviceKey() {
 
 export function SetDeviceName(arg1) {
   return window['go']['main']['App']['SetDeviceName'](arg1);
+}
+
+export function SetServerRole(arg1) {
+  return window['go']['main']['App']['SetServerRole'](arg1);
+}
+
+export function SetStartWithSystem(arg1) {
+  return window['go']['main']['App']['SetStartWithSystem'](arg1);
+}
+
+export function ShowWindow() {
+  return window['go']['main']['App']['ShowWindow']();
 }
 
 export function StopUsingExitNode() {
