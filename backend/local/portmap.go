@@ -50,11 +50,17 @@ type Mapping struct {
 type PortMapper struct {
 	logf func(string, ...any)
 
-	mu       sync.Mutex
-	mappings []Mapping
-	external string
-	stop     chan struct{}
-	stopped  bool
+	mu sync.Mutex
+	// requested accumulates every port ever asked for, because renewal has
+	// to cover all of them. An earlier version replaced this on each call
+	// and started a second renewal loop, so the ports from the first call
+	// quietly stopped being renewed and the hole closed two hours later.
+	requested []Port
+	mappings  []Mapping
+	external  string
+	renewing  bool
+	stop      chan struct{}
+	stopped   bool
 }
 
 // NewPortMapper builds a PortMapper. logf may be nil.
@@ -85,15 +91,22 @@ const (
 // a normal outcome — plenty of networks have no router this can talk to, and
 // carrier-grade NAT cannot be opened at all — so it is reported rather than
 // treated as failure.
+// Open may be called more than once; each call adds to what is kept open
+// rather than replacing it, and a single renewal loop covers the lot.
 func (p *PortMapper) Open(ctx context.Context, ports []Port) []Mapping {
 	got := p.tryOnce(ctx, ports)
 
 	p.mu.Lock()
-	p.mappings = got
+	p.requested = append(p.requested, ports...)
+	p.mappings = append(p.mappings, got...)
+	start := !p.renewing && len(p.mappings) > 0
+	if start {
+		p.renewing = true
+	}
 	p.mu.Unlock()
 
-	if len(got) > 0 {
-		go p.renew(ports)
+	if start {
+		go p.renew()
 	}
 	return got
 }
@@ -129,7 +142,7 @@ func (p *PortMapper) Close() {
 	}
 }
 
-func (p *PortMapper) renew(ports []Port) {
+func (p *PortMapper) renew() {
 	ticker := time.NewTicker(renewEvery)
 	defer ticker.Stop()
 	for {
@@ -137,6 +150,10 @@ func (p *PortMapper) renew(ports []Port) {
 		case <-p.stop:
 			return
 		case <-ticker.C:
+			p.mu.Lock()
+			ports := append([]Port(nil), p.requested...)
+			p.mu.Unlock()
+
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			got := p.tryOnce(ctx, ports)
 			cancel()

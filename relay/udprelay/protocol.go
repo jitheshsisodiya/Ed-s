@@ -1,4 +1,4 @@
-package relay
+package udprelay
 
 import (
 	"errors"

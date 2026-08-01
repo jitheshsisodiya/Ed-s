@@ -29,6 +29,7 @@ import {
   Register,
   RotateDeviceKey,
   SetReachableFromAnywhere,
+  SetRelayHere,
   SetServerRole,
   SetDeviceName,
   SetStartWithSystem,
@@ -827,6 +828,7 @@ function Fact({
  */
 function Reach({ server }: { server: main.LocalServer | null }) {
   const [remote, setRemote] = useState(server?.remote ?? false);
+  const [relay, setRelay] = useState(server?.relay ?? false);
   const [saved, setSaved] = useState(false);
 
   if (!server?.host) {
@@ -865,6 +867,25 @@ function Reach({ server }: { server: main.LocalServer | null }) {
             Takes effect the next time NexusVPN starts.
           </p>
         )}
+      </Group>
+
+      <Group title="When two machines cannot reach each other">
+        <Toggle
+          checked={relay}
+          onChange={(v) => {
+            setRelay(v);
+            setSaved(false);
+            SetRelayHere(v).then(() => setSaved(true)).catch(() => undefined);
+          }}
+          label={relay ? 'This machine relays' : 'No relaying'}
+        />
+        <p className="mt-1.5 text-[11.5px] leading-relaxed text-ink-faint">
+          Two machines usually connect directly, by punching through both their
+          routers. Some networks &mdash; mobile networks especially &mdash;
+          make that impossible, and those pairs simply cannot talk. With this
+          on, their traffic goes through here instead. It stays encrypted end
+          to end; this machine carries it without being able to read it.
+        </p>
       </Group>
 
       <Group title="Addresses">

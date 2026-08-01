@@ -210,6 +210,13 @@ type role struct {
 	Host bool `json:"host"`
 	// Chosen distinguishes "join, and I meant it" from "not asked yet".
 	Chosen bool `json:"chosen"`
+	// Relay is true when this machine should carry traffic for pairs of
+	// devices that cannot reach each other directly.
+	//
+	// Off unless asked for: it means this machine's connection carries
+	// somebody else's data, which is fine when the somebody else is you, and
+	// a thing to be asked about rather than assumed.
+	Relay bool `json:"relay"`
 	// Remote is true when this machine should be reachable from outside the
 	// local network, which means asking the router to forward a port.
 	//
@@ -292,6 +299,7 @@ func (a *App) startServer() error {
 	srv, err := local.Start(a.ctx, local.Options{
 		DataDir:        dataDir(),
 		OpenRouterPort: loadRole().Remote,
+		RunRelay:       loadRole().Relay,
 		Logf: func(format string, args ...any) {
 			a.logf(format, args...)
 		},
@@ -317,10 +325,21 @@ func (a *App) SetReachableFromAnywhere(remote bool) error {
 	return nil
 }
 
+// SetRelayHere turns on carrying traffic for peers that cannot reach each
+// other directly. Takes effect on the next start, like the setting above.
+func (a *App) SetRelayHere(relay bool) error {
+	r := loadRole()
+	r.Relay = relay
+	if err := saveRole(r); err != nil {
+		return fmt.Errorf("could not save that choice: %w", err)
+	}
+	return nil
+}
+
 // SetServerRole records whether this machine hosts the control plane, and
 // starts it if so. Called once, from the first screen.
 func (a *App) SetServerRole(host bool) error {
-	if err := saveRole(role{Host: host, Chosen: true, Remote: loadRole().Remote}); err != nil {
+	if err := saveRole(role{Host: host, Chosen: true, Remote: loadRole().Remote, Relay: loadRole().Relay}); err != nil {
 		return fmt.Errorf("could not save that choice: %w", err)
 	}
 	if !host {
@@ -374,6 +393,9 @@ type LocalServer struct {
 	// can tell "not requested" from "requested and refused" — which are
 	// different problems with different answers.
 	Remote bool `json:"remote"`
+	// Relay reports whether this machine carries traffic for peers that
+	// cannot reach each other directly.
+	Relay bool `json:"relay"`
 	// FirstRun reports that no account exists yet, so the UI offers to
 	// create one instead of asking for a password nobody has set.
 	FirstRun bool `json:"firstRun"`
@@ -383,7 +405,7 @@ type LocalServer struct {
 func (a *App) GetLocalServer() LocalServer {
 	r := loadRole()
 	if a.server == nil {
-		return LocalServer{Chosen: r.Chosen, Host: r.Host, Remote: r.Remote}
+		return LocalServer{Chosen: r.Chosen, Host: r.Host, Remote: r.Remote, Relay: r.Relay}
 	}
 	return LocalServer{
 		Chosen:    true,
@@ -393,6 +415,7 @@ func (a *App) GetLocalServer() LocalServer {
 		LANURL:    a.server.LANURL,
 		PublicURL: a.server.PublicURL,
 		Remote:    r.Remote,
+		Relay:     r.Relay,
 		FirstRun:  a.server.IsFirstRun(),
 	}
 }

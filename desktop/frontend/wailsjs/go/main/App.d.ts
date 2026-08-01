@@ -41,6 +41,8 @@ export function SetDeviceName(arg1:string):Promise<void>;
 
 export function SetReachableFromAnywhere(arg1:boolean):Promise<void>;
 
+export function SetRelayHere(arg1:boolean):Promise<void>;
+
 export function SetServerRole(arg1:boolean):Promise<void>;
 
 export function SetStartWithSystem(arg1:boolean):Promise<void>;

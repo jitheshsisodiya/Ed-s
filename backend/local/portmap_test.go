@@ -130,3 +130,67 @@ func TestInternalAddressForRejectsAnUnreachableRouter(t *testing.T) {
 		t.Fatalf("returned %q, which is not an address", got)
 	}
 }
+
+// TestOpenAccumulates guards a bug that was written twice. Each Open call
+// used to replace the mapping set and start its own renewal loop, so the
+// ports from the first call stopped being renewed and their holes closed two
+// hours later — long after anybody would connect the two events. The relay
+// port is opened by a second call, so this is the real path.
+func TestOpenAccumulates(t *testing.T) {
+	mapper := NewPortMapper(nil)
+	defer mapper.Close()
+
+	// Simulated rather than negotiated: no router here would agree to
+	// anything, and what is being tested is the bookkeeping around the
+	// answer, not the answer.
+	mapper.mu.Lock()
+	mapper.requested = []Port{{Protocol: "tcp", Number: 8080}}
+	mapper.mappings = []Mapping{{Internal: 8080, External: 8080, Protocol: "tcp", Method: "UPnP"}}
+	mapper.renewing = true
+	mapper.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	mapper.Open(ctx, []Port{{Protocol: "udp", Number: 51821}})
+
+	mapper.mu.Lock()
+	requested := append([]Port(nil), mapper.requested...)
+	mapper.mu.Unlock()
+
+	var sawTCP, sawUDP bool
+	for _, p := range requested {
+		if p.Protocol == "tcp" && p.Number == 8080 {
+			sawTCP = true
+		}
+		if p.Protocol == "udp" && p.Number == 51821 {
+			sawUDP = true
+		}
+	}
+	if !sawTCP {
+		t.Error("the port from the first call is no longer being renewed")
+	}
+	if !sawUDP {
+		t.Error("the port from the second call was not recorded")
+	}
+}
+
+// TestOnlyOneRenewalLoop: two loops would both rewrite the mapping list on
+// their own schedule, each overwriting the other's results.
+func TestOnlyOneRenewalLoop(t *testing.T) {
+	mapper := NewPortMapper(nil)
+	defer mapper.Close()
+
+	mapper.mu.Lock()
+	mapper.renewing = true // as if a first successful Open had started one
+	mapper.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	mapper.Open(ctx, []Port{{Protocol: "udp", Number: 51821}})
+
+	mapper.mu.Lock()
+	defer mapper.mu.Unlock()
+	if !mapper.renewing {
+		t.Fatal("renewal was turned off by a later call")
+	}
+}

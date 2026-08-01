@@ -1,4 +1,4 @@
-package relay
+package udprelay
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/jitheshsisodiya/Ed-s/relay/internal/token"
+	"github.com/jitheshsisodiya/Ed-s/relay/token"
 )
 
 // Verifier validates relay session tokens presented in BIND frames.

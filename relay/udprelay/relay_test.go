@@ -1,4 +1,4 @@
-package relay
+package udprelay
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/jitheshsisodiya/Ed-s/relay/internal/token"
+	"github.com/jitheshsisodiya/Ed-s/relay/token"
 )
 
 const testSecret = "relay-secret-for-tests"

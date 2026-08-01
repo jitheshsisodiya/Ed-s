@@ -78,6 +78,10 @@ export function SetReachableFromAnywhere(arg1) {
   return window['go']['main']['App']['SetReachableFromAnywhere'](arg1);
 }
 
+export function SetRelayHere(arg1) {
+  return window['go']['main']['App']['SetRelayHere'](arg1);
+}
+
 export function SetServerRole(arg1) {
   return window['go']['main']['App']['SetServerRole'](arg1);
 }

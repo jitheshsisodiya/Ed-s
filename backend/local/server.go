@@ -62,6 +62,17 @@ type Options struct {
 	// makes a machine reachable from the internet, which is a decision for
 	// the person who owns it rather than something to do on their behalf.
 	OpenRouterPort bool
+
+	// RunRelay carries traffic for pairs of devices that cannot reach each
+	// other directly. Off by default for the same reason as above, and
+	// because it means this machine's connection carries somebody else's
+	// data — which is fine when the somebody else is you, and a thing to be
+	// asked about rather than assumed.
+	RunRelay bool
+	// RelayPort is the UDP port the relay listens on. Defaults to 51821, one
+	// above WireGuard's own, so the two do not collide on a machine running
+	// both.
+	RelayPort int
 }
 
 // Server is a running local control plane.
@@ -91,13 +102,14 @@ type Server struct {
 	httpPort int
 	grpcPort int
 
-	store    *embedded.Store
-	ports    *PortMapper
-	http     *stdhttp.Server
-	grpc     *grpc.Server
-	grpcLis  net.Listener
-	stopped  chan struct{}
-	shutdown func()
+	store     *embedded.Store
+	ports     *PortMapper
+	relayConn *net.UDPConn
+	http      *stdhttp.Server
+	grpc      *grpc.Server
+	grpcLis   net.Listener
+	stopped   chan struct{}
+	shutdown  func()
 }
 
 // Start brings the control plane up and returns once it is accepting
@@ -281,6 +293,9 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 		if srv.ports != nil {
 			srv.ports.Close()
 		}
+		if srv.relayConn != nil {
+			_ = srv.relayConn.Close()
+		}
 		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = httpServer.Shutdown(shutCtx)
@@ -290,6 +305,15 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 
 	if opts.OpenRouterPort {
 		srv.openRouterPort(ctx, opts.HTTPPort, opts.GRPCPort, logf)
+	}
+
+	if opts.RunRelay {
+		if opts.RelayPort == 0 {
+			opts.RelayPort = 51821
+		}
+		// After the port mapping, so registration can record the address
+		// that works from outside rather than the one that only works here.
+		srv.startOwnRelay(ctx, opts.RelayPort, secrets.RelaySecret, logf)
 	}
 
 	logf("local: control plane listening on %s (grpc %s)", httpAddr, grpcAddr)

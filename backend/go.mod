@@ -28,6 +28,7 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/jitheshsisodiya/Ed-s/relay v0.0.0-20260801200937-da4ef72021bd // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.70.1 // indirect
@@ -42,3 +43,8 @@ require (
 )
 
 replace github.com/jitheshsisodiya/Ed-s/protogen => ../protogen
+
+// The desktop app can run a relay on the same machine as the control plane,
+// so somebody's own hardware carries traffic that cannot go peer to peer,
+// rather than a rented server or nothing at all.
+replace github.com/jitheshsisodiya/Ed-s/relay => ../relay

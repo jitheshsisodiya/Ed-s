@@ -30,6 +30,7 @@ require (
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jchv/go-winloader v0.0.0-20210711035445-715c2860da7e // indirect
 	github.com/jitheshsisodiya/Ed-s/protogen v0.0.0-00010101000000-000000000000 // indirect
+	github.com/jitheshsisodiya/Ed-s/relay v0.0.0-20260801200937-da4ef72021bd // indirect
 	github.com/labstack/echo/v4 v4.13.3 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/leaanthony/go-ansi-parser v1.6.1 // indirect
@@ -76,3 +77,7 @@ require (
 replace github.com/jitheshsisodiya/Ed-s/backend => ../backend
 
 replace github.com/jitheshsisodiya/Ed-s/protogen => ../protogen
+
+// The control plane embedded here can also relay for peers that cannot reach
+// each other directly, so the relay travels with it.
+replace github.com/jitheshsisodiya/Ed-s/relay => ../relay

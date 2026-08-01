@@ -21,8 +21,8 @@ import (
 	"github.com/jitheshsisodiya/Ed-s/relay/internal/config"
 	"github.com/jitheshsisodiya/Ed-s/relay/internal/controlplane"
 	"github.com/jitheshsisodiya/Ed-s/relay/internal/metrics"
-	"github.com/jitheshsisodiya/Ed-s/relay/internal/relay"
-	"github.com/jitheshsisodiya/Ed-s/relay/internal/token"
+	"github.com/jitheshsisodiya/Ed-s/relay/token"
+	"github.com/jitheshsisodiya/Ed-s/relay/udprelay"
 )
 
 func main() {
@@ -62,7 +62,7 @@ func run() error {
 		zap.String("region", cfg.Region),
 		zap.String("hostname", cfg.PublicHostname))
 
-	sessions := relay.NewSessionTable(cfg.SessionIdleTimeout, cfg.Capacity)
+	sessions := udprelay.NewSessionTable(cfg.SessionIdleTimeout, cfg.Capacity)
 	verifier := token.NewVerifier(cfg.RelaySecret, "")
 
 	// --- Control-plane registration ---
@@ -101,7 +101,7 @@ func run() error {
 	go reportLoop(ctx, cfg, cp, sessions, relayID, logger)
 
 	// --- Serve ---
-	server := relay.NewServer(relay.Config{
+	server := udprelay.NewServer(udprelay.Config{
 		Conn:     conn,
 		Verifier: verifier,
 		Sessions: sessions,
@@ -167,7 +167,7 @@ func reportLoop(
 	ctx context.Context,
 	cfg *config.Config,
 	cp *controlplane.Client,
-	sessions *relay.SessionTable,
+	sessions *udprelay.SessionTable,
 	relayID string,
 	logger *zap.Logger,
 ) {

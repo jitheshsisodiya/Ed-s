@@ -197,6 +197,7 @@ export namespace main {
 	    lanUrl: string;
 	    publicUrl: string;
 	    remote: boolean;
+	    relay: boolean;
 	    firstRun: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -212,6 +213,7 @@ export namespace main {
 	        this.lanUrl = source["lanUrl"];
 	        this.publicUrl = source["publicUrl"];
 	        this.remote = source["remote"];
+	        this.relay = source["relay"];
 	        this.firstRun = source["firstRun"];
 	    }
 	}
