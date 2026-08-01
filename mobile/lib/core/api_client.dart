@@ -11,7 +11,11 @@ import 'server_url.dart';
 /// Default control-plane base URL, used only until the user points the app
 /// at their own self-hosted backend from Settings. Matches the example
 /// server in api/openapi.yaml.
-const String kDefaultServerUrl = 'https://api.nexusvpn.example.com/api/v1';
+/// Empty on purpose. There is no address that is right for a self-hosted
+/// control plane, and a plausible-looking placeholder is worse than none: it
+/// makes the first sign-in fail against a domain that does not exist, which
+/// reads as the password being wrong rather than the address being unset.
+const String kDefaultServerUrl = '';
 
 /// Typed REST client for the NexusVPN control plane, mirroring every
 /// endpoint documented in `api/openapi.yaml`. Handles bearer-token auth,

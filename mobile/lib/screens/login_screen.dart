@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../core/auth_provider.dart';
+import '../core/server_url.dart';
 import '../widgets/primary_button.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -16,6 +17,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _serverController = TextEditingController();
   bool _obscure = true;
 
   @override
@@ -25,18 +27,31 @@ class _LoginScreenState extends State<LoginScreen> {
     if (auth.lastKnownEmail != null) {
       _emailController.text = auth.lastKnownEmail!;
     }
+    // The address has to be answerable from here. Settings is behind the
+    // sign-in this screen is trying to perform, so a wrong address left this
+    // screen the only one reachable and nothing on it could fix the problem.
+    auth.api.baseUrl.then((url) {
+      if (mounted) _serverController.text = url;
+    });
   }
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _serverController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     final auth = context.read<AuthProvider>();
+
+    // Saved before the attempt, so signing in and pointing at the right
+    // server are one action rather than two.
+    await auth.api.setBaseUrl(_serverController.text);
+
+    if (!mounted) return;
     final ok = await auth.login(
       _emailController.text.trim(),
       _passwordController.text,
@@ -103,6 +118,29 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 16),
                     ],
                     TextFormField(
+                      controller: _serverController,
+                      keyboardType: TextInputType.url,
+                      autocorrect: false,
+                      decoration: const InputDecoration(
+                        labelText: 'Server',
+                        hintText: 'http://192.168.1.20:8080',
+                        helperText: 'The machine running NexusVPN',
+                        prefixIcon: Icon(Icons.dns_outlined),
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (v) {
+                        try {
+                          validateServerUrl(v ?? '');
+                          return null;
+                        } on InsecureServerUrl catch (e) {
+                          return e.message;
+                        } on FormatException catch (e) {
+                          return e.message;
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
                       autofillHints: const [AutofillHints.email],
@@ -156,8 +194,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       onPressed: _submit,
                     ),
                     const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    // Wrap rather than Row: a Row overflows here on a narrow
+                    // screen or at a large font size, and the overflow is the
+                    // only way to reach registration.
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         const Text("Don't have an account?"),
                         TextButton(
