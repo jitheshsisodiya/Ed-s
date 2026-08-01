@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'app_exception.dart';
 import 'models/models.dart';
 import 'secure_storage.dart';
+import 'discovery.dart';
 import 'pinned_client.dart';
 import 'server_url.dart';
 
@@ -47,6 +48,39 @@ class ApiClient {
     final stored = await _storage.readServerUrl();
     _baseUrl = (stored != null && stored.isNotEmpty) ? stored : kDefaultServerUrl;
     return _baseUrl!;
+  }
+
+  /// Looks for the server this device is paired with, at whatever address it
+  /// has now, and follows it there.
+  ///
+  /// A router hands out addresses on a lease. When the machine hosting the
+  /// network gets a different one, every device that paired with it is
+  /// pointing somewhere nothing answers, and the failure says nothing about
+  /// addresses — it just times out.
+  ///
+  /// What makes following an announcement safe is the fingerprint. Anything on
+  /// the network can announce itself as NexusVPN; only the machine holding the
+  /// paired certificate can be the one this device already trusts. A match
+  /// means the same server moved; no match means somebody else is announcing,
+  /// and nothing changes.
+  ///
+  /// Returns the new address if it moved, or null.
+  Future<String?> followMovedServer() async {
+    final pinned = await _storage.readServerFingerprint();
+    if (pinned == null || pinned.isEmpty) {
+      // With nothing pinned there is no way to tell the right server from any
+      // other answer, and picking one would be following a stranger.
+      return null;
+    }
+    final current = await baseUrl;
+
+    for (final server in await Discovery.find()) {
+      if (server.fingerprint.toLowerCase() != pinned.toLowerCase()) continue;
+      if (server.url == current) return null; // already there
+      await setBaseUrl(server.url);
+      return server.url;
+    }
+    return null;
   }
 
   /// Reinstalls the stored pin, so a relaunched app is as particular about

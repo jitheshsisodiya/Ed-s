@@ -105,6 +105,7 @@ type Server struct {
 
 	store     *embedded.Store
 	ports     *PortMapper
+	announcer *Announcer
 	relayConn *net.UDPConn
 	http      *stdhttp.Server
 	grpc      *grpc.Server
@@ -299,6 +300,10 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 	}()
 
 	srv.shutdown = func() {
+		// Withdrawn first: a name that still resolves to a machine which has
+		// stopped serving sends devices to a closed port, where they wait for
+		// a timeout instead of being told there is nothing there.
+		srv.announcer.Stop()
 		if srv.ports != nil {
 			srv.ports.Close()
 		}
@@ -324,6 +329,10 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 		// that works from outside rather than the one that only works here.
 		srv.startOwnRelay(ctx, opts.RelayPort, secrets.RelaySecret, logf)
 	}
+
+	// Announced after everything is listening, so nothing is ever directed
+	// here before there is something to answer.
+	srv.announcer = Announce(opts.HTTPPort, id.fingerprint, logf)
 
 	logf("local: control plane listening on %s (grpc %s)", httpAddr, grpcAddr)
 	if srv.LANURL != "" {

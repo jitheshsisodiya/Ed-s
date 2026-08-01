@@ -96,6 +96,15 @@ class AuthProvider extends ChangeNotifier {
   /// commonest failure there is here, and the general message sends somebody
   /// to re-check an address that is already correct.
   Future<String> _explainNetworkFailure(ApiException e, String serverUrl) async {
+    // Before explaining, try to fix it: the commonest reason a paired device
+    // stops reaching its server is that the server's address changed, and the
+    // network can be asked where it went.
+    final moved = await api.followMovedServer();
+    if (moved != null) {
+      return 'The machine running NexusVPN has a new address on your network '
+          '($moved). That is where this app is looking now — try again.';
+    }
+
     final scheme = Reachability.explainScheme(
       serverUrl: serverUrl,
       error: e.message,

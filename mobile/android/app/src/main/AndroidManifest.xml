@@ -22,6 +22,15 @@
          VPN tunnel is up. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+      Finding the machine running NexusVPN by name instead of by address.
+      Android's Wi-Fi hardware drops multicast packets to save power unless an
+      app holds a multicast lock, and this permission is what allows taking
+      one — without it the announcements are simply never delivered and
+      discovery silently finds nothing.
+    -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
     <!-- Scanning invite QR codes to join a network (mobile_scanner). -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
