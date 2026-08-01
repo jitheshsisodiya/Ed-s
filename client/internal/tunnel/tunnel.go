@@ -718,3 +718,33 @@ func (t *Tunnel) probeForDirectPath(ctx context.Context, pr *peer) {
 		}
 	}
 }
+
+// UseCachedRegistration configures this tunnel from a registration the
+// control plane gave earlier, instead of asking for a new one.
+//
+// For a device that cannot reach the control plane but can still reach its
+// peers — a phone away from the network it was set up on, whose router will
+// not accept an inbound connection. Everything WireGuard needs was settled
+// the last time this device connected; the control plane's absence changes
+// what can be learned, not what is already known.
+//
+// The peers are installed here rather than left to the update stream,
+// because that stream runs over the connection which is unavailable. Start
+// will see the device as registered and not ask again.
+func (t *Tunnel) UseCachedRegistration(ctx context.Context, resp *coordinationv1.RegisterDeviceResponse) {
+	if resp == nil {
+		return
+	}
+	t.mu.Lock()
+	t.deviceID = resp.GetDeviceId()
+	t.virtualIP = resp.GetAssignedVirtualIp()
+	t.cidr = resp.GetNetworkCidr()
+	t.dnsServers = resp.GetDnsServers()
+	t.mu.Unlock()
+
+	for _, p := range resp.GetExistingPeers() {
+		if err := t.addPeer(ctx, p); err != nil {
+			t.logf("add remembered peer: %v", err)
+		}
+	}
+}

@@ -59,10 +59,34 @@ type NetworkState struct {
 	// not a limitation anybody would accept.
 	Keypair Keypair `json:"keypair,omitempty"`
 
+	// Cached is the last successful registration for this network, kept so
+	// the tunnel can come up when the control plane cannot be reached.
+	//
+	// A phone away from home can reach its peers — NAT traversal handles
+	// that — but not necessarily the machine that hands out addresses and
+	// peer lists, which needs an inbound connection its router may refuse.
+	// Everything WireGuard actually requires was already known the last time
+	// this device connected, so requiring the control plane to repeat it is
+	// what turns "away from home" into "does not work".
+	//
+	// Stored as protojson so it survives the message gaining fields, rather
+	// than as a hand-mirrored struct that would quietly drop them.
+	Cached *CachedRegistration `json:"cached,omitempty"`
+
 	// AutoConnect indicates the tunnel should be brought up for this
 	// network automatically (e.g. on `up` with no explicit target, or on
 	// daemon/desktop-app startup).
 	AutoConnect bool `json:"autoConnect"`
+}
+
+// CachedRegistration is what the control plane last said about this device
+// and its peers.
+type CachedRegistration struct {
+	// Response is a protojson-encoded RegisterDeviceResponse.
+	Response string `json:"response"`
+	// SavedAt says how old this is, so a caller can tell somebody they are
+	// connecting on information that may have moved on.
+	SavedAt time.Time `json:"savedAt"`
 }
 
 // Config is the full persisted client configuration.

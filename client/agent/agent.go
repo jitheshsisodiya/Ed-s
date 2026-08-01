@@ -603,7 +603,28 @@ func (a *Agent) connect(networkID string, opts ConnectOptions) error {
 			// sentence about permissions they cannot act on.
 			return abort(fmt.Errorf("%w: %v", errStaleDeviceKey, err))
 		}
-		return abort(err)
+
+		// Nothing answered. Everything WireGuard needs was settled the last
+		// time this device connected, so it comes up on that — a phone away
+		// from home can still reach its peers even when the machine that
+		// hands out addresses is behind a router that will not take an
+		// inbound connection.
+		//
+		// Only when nothing answered. A control plane that replied and said
+		// no has given an answer, and connecting from cache instead would
+		// reconnect a device that was told to go away.
+		cached, savedAt, ok := a.cachedRegistration(cfg, networkID)
+		if !ok || !controlPlaneUnreachable(err) {
+			return abort(err)
+		}
+		logf("could not reach the control plane (%v); connecting on what this "+
+			"device already knew, which is %s — new machines and changed "+
+			"addresses will not appear until it can be reached again",
+			err, describeCacheAge(savedAt))
+		tun.UseCachedRegistration(ctx, cached)
+		resp = cached
+	} else {
+		a.rememberRegistration(networkID, resp)
 	}
 
 	// Probes are attributed by device ID, which only exists after
