@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'api_client.dart';
+import 'invite.dart';
 import 'pairing.dart';
 import 'server_url.dart';
 import 'app_exception.dart';
@@ -95,8 +96,18 @@ class AuthProvider extends ChangeNotifier {
   Future<String?> pairWithLink(String link) async {
     final parsed = parsePairingLink(link);
     if (parsed == null) {
-      errorMessage = 'That is not a NexusVPN pairing code. On your computer, '
-          'open the network and tap the phone icon.';
+      // The likeliest wrong scan by far is the invite QR, which sits on the
+      // same row one icon along and looks more like "a QR code" than the
+      // phone does. Naming it is the difference between knowing what to do
+      // next and scanning the same thing again.
+      errorMessage = parseInviteCode(link).isNotEmpty
+          ? 'That is the invite code, which shares this network with someone '
+              'else who already has an account. To add your own phone, tap '
+              'the phone icon on the network row instead — one icon to the '
+              'left of the one you used.'
+          : 'That is not a NexusVPN pairing code. On your computer, open '
+              'NexusVPN, find the network, and tap the phone icon on its row. '
+              'If there is no phone icon, the desktop app needs updating.';
       notifyListeners();
       return null;
     }

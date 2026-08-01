@@ -56,6 +56,11 @@ export default function Invite({
         </div>
 
         <p className="hint" style={{ marginTop: 0 }}>
+          For somebody <em>else</em> — they will need their own NexusVPN account.
+          To add your own phone, close this and use the phone icon instead; scanning this
+          one from the NexusVPN app will not sign you in.
+        </p>
+        <p className="hint" style={{ marginTop: 0 }}>
           Anyone with this code can join <strong>{network.name}</strong>. It keeps working
           until you replace it.
         </p>

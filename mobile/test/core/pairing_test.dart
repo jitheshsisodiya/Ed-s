@@ -30,6 +30,24 @@ void main() {
       final p = parsePairingLink('  nexusvpn://pair?s=http%3A%2F%2F10.0.0.5%3A8080&t=tok  ');
       expect(p?.token, 'tok');
     });
+
+    // Not hand-written: produced by running the same url.Values.Encode()
+    // the desktop uses, with a real JWT shape in it. A parser tested only
+    // against links its own author typed can pass while rejecting every link
+    // the other half of the system actually emits.
+    test('a link captured from the Go generator, verbatim', () {
+      const generated =
+          'nexusvpn://pair?s=http%3A%2F%2F192.168.1.20%3A8080'
+          '&t=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI3ZjNhIn0.sig';
+      final p = parsePairingLink(generated);
+      expect(p, isNotNull, reason: 'the phone cannot read what the desktop writes');
+      expect(p!.serverUrl, 'http://192.168.1.20:8080');
+      expect(
+        p.token,
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI3ZjNhIn0.sig',
+        reason: 'a JWT contains dots, which a sloppy split would eat',
+      );
+    });
   });
 
   group('what is not a pairing link', () {
