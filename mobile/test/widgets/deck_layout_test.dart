@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nexusvpn/core/deck_theme.dart';
 import 'package:nexusvpn/core/models/models.dart';
@@ -65,7 +64,7 @@ void main() {
     // carry the state in words.
     final node = tester.getSemantics(find.byType(ReactorCore));
     expect(node.label, contains('online'));
-    expect(node.hasFlag(SemanticsFlag.isButton), isTrue);
+    expect(node.flagsCollection.isButton, isTrue);
 
     semantics.dispose();
   });

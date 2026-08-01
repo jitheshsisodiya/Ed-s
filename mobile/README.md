@@ -49,6 +49,55 @@ flutter run           # with a device or emulator attached
 Point the app at your control plane on the sign-in screen, or change
 `kDefaultServerUrl` in `lib/core/api_client.dart`.
 
+## Building an APK
+
+```bash
+flutter build apk --release        # one APK, every architecture
+flutter build apk --split-per-abi  # smaller, one per architecture
+```
+
+The result lands in `build/app/outputs/flutter-apk/`. Sideloading it needs
+"Install unknown apps" allowed for whatever app is doing the installing —
+Files, Chrome, Drive — which Android asks about on first attempt.
+
+### Signing
+
+An APK Android will install has to be signed. With no configuration the
+build falls back to the debug key, which works for sideloading onto your own
+device and is refused by Play.
+
+For anything you intend to update later, make your own key and keep it. The
+signature is the app's identity: Android refuses an update signed by a
+different key, and there is no recovery — a lost keystore means the next
+version can only ship under a new package name, as a separate app that
+cannot see the first one's data.
+
+```bash
+keytool -genkeypair -v -keystore ~/nexusvpn-release.jks \
+  -keyalg RSA -keysize 4096 -validity 10950 -alias nexusvpn
+```
+
+Then create `android/key.properties` — which is gitignored, and must stay
+that way:
+
+```properties
+storeFile=/absolute/path/to/nexusvpn-release.jks
+storePassword=...
+keyAlias=nexusvpn
+keyPassword=...
+```
+
+The Gradle build picks it up automatically and uses the debug key when it is
+absent, so a fresh clone still builds.
+
+### A note on the server address
+
+The app talks to your control plane over the network, so `localhost` is
+whatever the phone itself is, not the machine running the server. On a phone,
+point it at the LAN address the desktop app shows you — `http://192.168.x.x:8080`.
+That also means the phone has to be on the same network as the server, or the
+server has to be reachable from outside it.
+
 ## Layout
 
 ```
@@ -62,7 +111,10 @@ lib/widgets/       deck: reactor core, scrambler, signal bars, network
 test/              model (de)serialization, API client, connection quality,
                    widget and layout tests
 android/           platform project: VPN, camera and notification
-                   permissions, and the backup opt-out below
+                   permissions, the launcher icon, and the backup opt-out
+                   below
+tool/icongen/      regenerates the launcher icons from the same mark the
+                   desktop tray draws
 ```
 
 ## What the app shows
@@ -122,6 +174,16 @@ design.
   somewhere they did not ask for it. A restored phone signs in again and
   generates a fresh device key — which is also what you want, since a device
   key that can be cloned onto a second handset identifies two devices.
+- **Plain HTTP is accepted only for an address that cannot leave the local
+  network** — the private and loopback ranges, `localhost`, and mDNS `.local`
+  names. Everything else must be `https`, because a server on the internet
+  carries sign-in credentials across networks nobody involved controls. This
+  is enforced in `lib/core/server_url.dart`, at the one point where a server
+  address enters the app, and not by Android's network security config: that
+  file matches hostnames rather than address ranges, so the platform flag can
+  only say "all cleartext" or "none". A hostname is never resolved to decide
+  this — where a name points when somebody types it is not where it points
+  when the request goes out.
 - Screen-reader labels carry what colour and motion cannot: the connect
   control announces its state in words, and status pills are uppercased for
   the eye but announced in natural casing, because assistive tech spells
@@ -138,8 +200,13 @@ design.
 flutter test
 ```
 
-17 tests cover model (de)serialization against the exact shapes in
-`api/openapi.yaml`, and the API client's behaviour: bearer-token attachment,
-the MFA challenge, refresh-once-then-retry on 401, session-expiry signalling,
-and error-envelope surfacing. The HTTP layer is mocked, so no server is
-needed.
+91 tests, no server needed — the HTTP layer is mocked.
+
+They cover model (de)serialization against the exact shapes in
+`api/openapi.yaml`; the API client's behaviour (bearer-token attachment, the
+MFA challenge, refresh-once-then-retry on 401, session-expiry signalling,
+error-envelope surfacing); the invite-code parser, case for case against the
+Go one in `client/agent/invite.go`, so a link one platform generates is a
+link the other accepts; which addresses may be reached over plain HTTP; and a
+layout pass at 320×568 asserting the deck does not overflow in any of its
+four states.

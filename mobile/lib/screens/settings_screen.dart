@@ -6,6 +6,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../core/app_settings.dart';
 import '../core/auth_provider.dart';
+import '../core/server_url.dart';
 import '../core/vpn_controller.dart';
 import '../widgets/primary_button.dart';
 
@@ -71,9 +72,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SnackBar(content: Text('Server URL saved.')),
         );
       }
+    } on InsecureServerUrl catch (e) {
+      _showServerUrlProblem(e.message);
+    } on FormatException catch (e) {
+      _showServerUrlProblem(e.message);
     } finally {
       if (mounted) setState(() => _savingServerUrl = false);
     }
+  }
+
+  /// A rejected address has to say so. Without this the save silently does
+  /// nothing and the field still shows what was typed, which reads as the app
+  /// having accepted it.
+  void _showServerUrlProblem(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Theme.of(context).colorScheme.error,
+        duration: const Duration(seconds: 6),
+      ),
+    );
   }
 
   Future<void> _saveDeviceName() async {

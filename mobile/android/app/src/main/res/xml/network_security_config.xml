@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext is permitted here because Android's network security config
+  matches hostnames, not address ranges, and this app's server is normally a
+  machine on the user's own network reached by IP — http://192.168.1.20:8080.
+  There is no way to express "private addresses only" in this file.
+
+  The rule is enforced instead in lib/core/server_url.dart, at the single
+  point where a server address enters the app: plain HTTP is accepted for an
+  address that cannot be routed off the local network, and refused for
+  everything else. That is a narrower policy than this file can describe,
+  not a weaker one.
+
+  The tunnel itself does not rely on either: WireGuard is encrypted end to
+  end regardless of what the transport permits.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

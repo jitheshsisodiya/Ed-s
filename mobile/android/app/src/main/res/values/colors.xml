@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- deck-900, the same ground the Flutter theme paints, so the handover
+         from the launch screen to the app is invisible. -->
+    <color name="deck_ground">#FF05080F</color>
+</resources>

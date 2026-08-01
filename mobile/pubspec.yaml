@@ -54,5 +54,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/
+  # No assets declaration: nothing in lib/ loads one, and git does not carry
+  # an empty directory, so declaring assets/ made a fresh clone fail to build
+  # with "unable to find directory entry in pubspec.yaml". Add it back
+  # alongside the first real asset.

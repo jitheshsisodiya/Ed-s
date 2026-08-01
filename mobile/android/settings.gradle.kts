@@ -18,7 +18,11 @@ pluginManagement {
 
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
-    id("com.android.application") version "8.7.2" apply false
+    // 8.9.1 is a floor, not a preference: the camera libraries mobile_scanner
+    // pulls in for QR scanning refuse to build under anything older, and the
+    // error names this line. Gradle 8.12 in gradle/wrapper is the matching
+    // half — AGP checks it and stops if they disagree.
+    id("com.android.application") version "8.9.1" apply false
     id("org.jetbrains.kotlin.android") version "2.1.0" apply false
 }
 

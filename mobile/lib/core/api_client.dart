@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'app_exception.dart';
 import 'models/models.dart';
 import 'secure_storage.dart';
+import 'server_url.dart';
 
 /// Default control-plane base URL, used only until the user points the app
 /// at their own self-hosted backend from Settings. Matches the example
@@ -49,11 +50,10 @@ class ApiClient {
     await _storage.saveServerUrl(normalized);
   }
 
-  static String _normalizeBaseUrl(String url) {
-    var u = url.trim();
-    if (u.endsWith('/')) u = u.substring(0, u.length - 1);
-    return u;
-  }
+  /// Validates as well as tidies. This is the single point where a server
+  /// address enters the app, so it is the place the cleartext rule in
+  /// server_url.dart can actually be enforced.
+  static String _normalizeBaseUrl(String url) => validateServerUrl(url);
 
   Future<Uri> _uri(String path, [Map<String, dynamic>? query]) async {
     final base = await baseUrl;
