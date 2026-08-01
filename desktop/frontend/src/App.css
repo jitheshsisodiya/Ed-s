@@ -545,3 +545,46 @@ input::placeholder { color: var(--text-3); }
 @media (prefers-reduced-motion: reduce) {
   *, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- Invite sheet ---------- */
+
+.scrim {
+  position: fixed; inset: 0; z-index: 20;
+  display: grid; place-items: center;
+  padding: 24px;
+  background: rgb(15 23 42 / 0.45);
+  backdrop-filter: blur(3px);
+}
+
+.sheet-card {
+  width: 100%; max-width: 380px;
+  padding: 18px 20px 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.invite {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 14px; margin-top: 14px;
+}
+
+/* The QR keeps its own black-on-white regardless of theme: a scanner reads
+   contrast, and an inverted code is a code that does not scan. */
+.qr {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 6px;
+}
+
+.invite-code {
+  font-family: var(--mono);
+  font-size: 26px; font-weight: 600;
+  letter-spacing: 0.14em;
+  padding-left: 0.14em; /* balances the trailing letter-space */
+  color: var(--text);
+}
+
+.invite-actions { display: flex; gap: 8px; }

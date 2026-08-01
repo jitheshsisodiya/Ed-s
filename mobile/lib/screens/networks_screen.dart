@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../core/app_exception.dart';
 import '../core/app_settings.dart';
 import '../core/auth_provider.dart';
+import '../core/invite.dart';
 import '../core/models/models.dart';
 import '../widgets/error_view.dart';
 import '../widgets/loading_indicator.dart';
@@ -187,13 +188,16 @@ class _NetworksScreenState extends State<NetworksScreen> {
                           ),
                         );
                         if (scanned != null) {
-                          codeController.text = scanned;
+                          // A scan yields whatever was encoded — a bare
+                          // code from an older build, or a link from a
+                          // current one. Both mean the same thing.
+                          codeController.text = parseInviteCode(scanned);
                         }
                       },
                     ),
                   ),
-                  validator: (v) => (v == null || v.trim().isEmpty)
-                      ? 'Invite code is required'
+                  validator: (v) => parseInviteCode(v ?? '').isEmpty
+                      ? 'Paste the invite code or link you were sent'
                       : null,
                 ),
               ],
@@ -219,7 +223,9 @@ class _NetworksScreenState extends State<NetworksScreen> {
                         await context
                             .read<AuthProvider>()
                             .api
-                            .joinNetwork(codeController.text.trim());
+                            .joinNetwork(
+                              parseInviteCode(codeController.text),
+                            );
                         if (dialogContext.mounted) {
                           Navigator.of(dialogContext).pop(true);
                         }

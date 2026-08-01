@@ -17,6 +17,8 @@ export function GetSession():Promise<agent.Session>;
 
 export function GetStatus():Promise<agent.Status>;
 
+export function InviteLink(arg1:string):Promise<string>;
+
 export function JoinNetwork(arg1:string):Promise<agent.Network>;
 
 export function ListNetworks():Promise<Array<agent.Network>>;

@@ -30,6 +30,10 @@ export function GetStatus() {
   return window['go']['main']['App']['GetStatus']();
 }
 
+export function InviteLink(arg1) {
+  return window['go']['main']['App']['InviteLink'](arg1);
+}
+
 export function JoinNetwork(arg1) {
   return window['go']['main']['App']['JoinNetwork'](arg1);
 }

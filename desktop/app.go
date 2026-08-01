@@ -175,6 +175,16 @@ func (a *App) CopyToClipboard(text string) error {
 	return wailsruntime.ClipboardSetText(a.ctx, text)
 }
 
+// InviteLink renders an invite code as the shareable link form. The UI puts
+// it in a QR code so a phone can join by pointing its camera at the screen,
+// and on the clipboard so it can be pasted into a chat.
+//
+// The formatting lives in the shared agent package so a link produced here
+// is a link nexusvpnctl and the mobile apps accept.
+func (a *App) InviteLink(code string) string {
+	return agent.InviteLink(code)
+}
+
 // RotateDeviceKey generates a fresh device keypair and returns its public key.
 func (a *App) RotateDeviceKey() (string, error) {
 	if err := a.ready(); err != nil {

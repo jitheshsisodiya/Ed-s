@@ -293,7 +293,9 @@ func (a *Agent) JoinNetwork(ctx context.Context, inviteCode string) (Network, er
 	if err != nil {
 		return Network{}, err
 	}
-	inviteCode = strings.TrimSpace(inviteCode)
+	// Accept whatever the person was actually sent — a code, an app link
+	// or a web link — rather than only the form we happen to print.
+	inviteCode = ParseInviteCode(inviteCode)
 	if inviteCode == "" {
 		return Network{}, fmt.Errorf("an invite code is required")
 	}

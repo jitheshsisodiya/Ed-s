@@ -19,6 +19,7 @@ import { EventsOff, EventsOn } from '../wailsjs/runtime/runtime';
 import type { agent } from '../wailsjs/go/models';
 
 import Icon, { deviceIcon } from './Icon';
+import Invite from './Invite';
 import './App.css';
 
 /* ============================================================
@@ -458,6 +459,8 @@ function Home({
   const [inviteCode, setInviteCode] = useState('');
   const [newName, setNewName] = useState('');
   const [adding, setAdding] = useState(false);
+  // The network whose invite sheet is open, if any.
+  const [sharing, setSharing] = useState<agent.Network | null>(null);
 
   const reload = useCallback(async () => {
     setNetworks(await ListNetworks());
@@ -572,6 +575,15 @@ function Home({
                         {advanced && ` · ${n.cidr} · ${n.role}`}
                       </div>
                     </div>
+                    {n.inviteCode && (
+                      <button
+                        className="btn"
+                        onClick={() => setSharing(n)}
+                        title={`Invite people to ${n.name}`}
+                      >
+                        Invite
+                      </button>
+                    )}
                     {isActive ? (
                       <button
                         className="btn danger"
@@ -615,7 +627,7 @@ function Home({
                   });
                 }}
               >
-                <label htmlFor="invite">Have an invite code?</label>
+                <label htmlFor="invite">Have an invite code or link?</label>
                 <div className="inline-form">
                   <input
                     id="invite"
@@ -664,6 +676,10 @@ function Home({
             </div>
           )}
         </section>
+      )}
+
+      {sharing && (
+        <Invite network={sharing} onClose={() => setSharing(null)} onCopy={onCopy} />
       )}
 
       {connected && (

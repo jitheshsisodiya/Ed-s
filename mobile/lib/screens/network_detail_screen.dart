@@ -11,6 +11,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../core/app_exception.dart';
 import '../core/app_settings.dart';
 import '../core/auth_provider.dart';
+import '../core/invite.dart';
 import '../core/models/models.dart';
 import '../core/vpn_controller.dart';
 import '../widgets/device_tile.dart';
@@ -533,7 +534,7 @@ class _InviteCard extends StatelessWidget {
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: QrImageView(data: code, size: 96),
+                    child: QrImageView(data: inviteLink(code), size: 96),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
