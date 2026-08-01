@@ -62,12 +62,17 @@ android {
         release {
             signingConfig = signingConfigs.findByName("release")
                 ?: signingConfigs.getByName("debug")
-            // Kept off deliberately. Shrinking strips the reflection-reached
-            // classes inside the WireGuard plugin's VpnService, and the
-            // failure is a tunnel that will not start on a release build
-            // only — the build everybody actually installs.
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // On, because the unshrunk APK is 20MB of dex — ML Kit and the
+            // camera stack, most of which no code path reaches. R8 keeps
+            // everything the merged manifest names, which covers the tunnel's
+            // VpnService; proguard-rules.pro covers what it reaches by JNI
+            // and reflection instead, where R8 cannot follow.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

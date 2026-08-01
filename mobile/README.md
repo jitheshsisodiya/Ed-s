@@ -52,13 +52,28 @@ Point the app at your control plane on the sign-in screen, or change
 ## Building an APK
 
 ```bash
-flutter build apk --release        # one APK, every architecture
-flutter build apk --split-per-abi  # smaller, one per architecture
+flutter build apk --release        # one APK, every architecture (~55 MB)
+flutter build apk --split-per-abi  # one per architecture (~29 MB for arm64)
 ```
 
-The result lands in `build/app/outputs/flutter-apk/`. Sideloading it needs
-"Install unknown apps" allowed for whatever app is doing the installing —
-Files, Chrome, Drive — which Android asks about on first attempt.
+The result lands in `build/app/outputs/flutter-apk/`. `arm64-v8a` is what
+every phone of the last several years runs; `armeabi-v7a` covers older
+32-bit handsets and `x86_64` only the emulator.
+
+Sideloading needs "Install unknown apps" allowed for whatever app opens the
+file — Files, Chrome, Drive — which Android asks about on first attempt.
+
+R8 is on for release builds, and it matters: unshrunk, the APK carries about
+20 MB of dex, most of it ML Kit and camera code no path reaches. R8 keeps
+everything the merged manifest names, which covers the tunnel's own
+`VpnService`; `android/app/proguard-rules.pro` covers what the backend
+reaches by JNI and reflection instead, where R8 cannot follow. If you change
+those rules, check the built APK still declares
+`com.wireguard.android.backend.GoBackend$VpnService`:
+
+```bash
+apkanalyzer manifest print build/app/outputs/flutter-apk/app-arm64-v8a-release.apk | grep VpnService
+```
 
 ### Signing
 
