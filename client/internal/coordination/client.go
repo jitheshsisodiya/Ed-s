@@ -9,8 +9,12 @@ package coordination
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc"
@@ -51,15 +55,31 @@ type DialOptions struct {
 	// stays on, but no chain/hostname validation — for self-signed
 	// dev/test deployments only).
 	InsecureSkipVerify bool
+
+	// Fingerprint pins the server's certificate: the connection is refused
+	// unless the server presents exactly this one.
+	//
+	// This carries the access token in its metadata on every call, so a
+	// plaintext connection here hands that token to anything on the path.
+	// A self-hosted control plane has no certificate any authority will
+	// vouch for, which is why the fingerprint is learned during pairing and
+	// checked here rather than a chain being validated.
+	Fingerprint string
 }
 
 // Dial connects to the coordination gRPC endpoint (host:port).
 func Dial(ctx context.Context, target string, tokens TokenSource, opts DialOptions) (*Client, error) {
 	var creds credentials.TransportCredentials
-	if opts.Insecure {
+	switch {
+	case opts.Insecure:
 		creds = insecure.NewCredentials()
-	} else {
-		creds = credentials.NewTLS(&tls.Config{InsecureSkipVerify: opts.InsecureSkipVerify}) //nolint:gosec
+	case opts.Fingerprint != "":
+		creds = credentials.NewTLS(pinnedTLSConfig(opts.Fingerprint))
+	default:
+		creds = credentials.NewTLS(&tls.Config{
+			InsecureSkipVerify: opts.InsecureSkipVerify, //nolint:gosec
+			MinVersion:         tls.VersionTLS12,
+		})
 	}
 
 	conn, err := grpc.NewClient(target,
@@ -180,3 +200,30 @@ func (c *Client) RequestRelay(ctx context.Context, req *coordinationv1.RequestRe
 // DefaultDialTimeout bounds how long Dial-then-first-RPC style startup
 // waits before giving up.
 const DefaultDialTimeout = 10 * time.Second
+
+// pinnedTLSConfig accepts exactly one certificate and nothing else.
+//
+// The same arrangement the REST client uses, for the same reason: the
+// fingerprint is learned from a QR code on a screen in the same room, which
+// is a channel no network attacker is on, and trusting one key is narrower
+// than trusting every authority the platform ships with.
+//
+// Go's own verification is turned off and replaced rather than dropped —
+// VerifyPeerCertificate below runs on every handshake.
+func pinnedTLSConfig(fingerprint string) *tls.Config {
+	want := strings.ToLower(strings.NewReplacer(":", "", " ", "", "-", "").Replace(fingerprint))
+	return &tls.Config{
+		InsecureSkipVerify: true, //nolint:gosec // replaced by the pin below
+		MinVersion:         tls.VersionTLS12,
+		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+			if len(rawCerts) == 0 {
+				return fmt.Errorf("coordination: server presented no certificate")
+			}
+			sum := sha256.Sum256(rawCerts[0])
+			if hex.EncodeToString(sum[:]) != want {
+				return fmt.Errorf("coordination: this is not the machine you paired with")
+			}
+			return nil
+		},
+	}
+}

@@ -530,7 +530,11 @@ func (a *Agent) connect(networkID string, opts ConnectOptions) error {
 
 	target, insecureGRPC := grpcTarget(cfg.ServerURL, opts.GRPCAddr)
 	coord, err := coordination.Dial(ctx, target, client, coordination.DialOptions{
-		Insecure:           insecureGRPC,
+		Insecure: insecureGRPC,
+		// The same certificate the REST side was pinned to, because it is
+		// the same server. Coordination carries the access token on every
+		// call, so this is the connection that matters most.
+		Fingerprint:        cfg.ServerFingerprint,
 		InsecureSkipVerify: opts.InsecureSkipVerify,
 	})
 	if err != nil {
@@ -942,4 +946,33 @@ func (a *Agent) Register(ctx context.Context, serverURL, email, password, displa
 		return err
 	}
 	return a.Login(ctx, serverURL, email, password, "")
+}
+
+// UseServer records where the control plane is and which certificate it
+// presents, without signing in.
+//
+// For the machine that hosts the control plane, which is the only thing that
+// knows both. Its own configuration would otherwise be whatever was written
+// the first time somebody signed in — and when the server's address, scheme
+// or certificate changes underneath it, nothing else would ever correct it.
+//
+// That is not hypothetical: an installation that signed in over plain HTTP
+// and was then upgraded to a server speaking TLS kept talking to the old
+// address, and the TLS listener closed the connection on it. The error named
+// a socket, and the cause was a stale line in a config file.
+//
+// The session is left alone. A changed address does not mean a changed
+// account, and signing somebody out because their own machine reissued a
+// certificate would be a strange way to say so.
+func (a *Agent) UseServer(serverURL, fingerprint string) error {
+	serverURL = strings.TrimRight(strings.TrimSpace(serverURL), "/")
+	if serverURL == "" {
+		return fmt.Errorf("a server URL is required")
+	}
+	_, err := a.store.Update(func(c *config.Config) error {
+		c.ServerURL = serverURL
+		c.ServerFingerprint = fingerprint
+		return nil
+	})
+	return err
 }

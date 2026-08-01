@@ -1506,6 +1506,20 @@ function humanError(err: unknown): { message: string; fix?: string } {
   if (lower.includes('invite')) {
     return { message: 'That invite did not work.', fix: 'Codes can be replaced — ask for a fresh one.' };
   }
+  // Windows' wording for a TLS listener hanging up on a plaintext request,
+  // which is what an installation that predates TLS does to itself.
+  if (lower.includes('forcibly closed') || lower.includes('wsarecv')) {
+    return {
+      message: 'The server closed the connection before answering.',
+      fix: 'Usually an address left over from an older version. Sign out and back in, or take a fresh pairing code from the machine hosting the network.',
+    };
+  }
+  if (lower.includes('not the machine you paired with')) {
+    return {
+      message: 'Something else is answering at that address.',
+      fix: 'If the server was reinstalled, its certificate changed and this device needs pairing again. If it was not, do not continue.',
+    };
+  }
   if (lower.includes('connection refused') || lower.includes('no such host') || lower.includes('dial')) {
     return {
       message: 'Cannot reach your server.',

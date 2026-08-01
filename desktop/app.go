@@ -308,6 +308,20 @@ func (a *App) startServer() error {
 		return fmt.Errorf("the built-in server did not start: %w", err)
 	}
 	a.server = srv
+
+	// The machine hosting the control plane is the only one that knows its
+	// address and its certificate, so it tells its own engine rather than
+	// relying on whatever was written the last time somebody signed in.
+	//
+	// Without this, an installation that signed in before the server spoke
+	// TLS kept using the old http address and got its connection closed by
+	// the TLS listener, with an error naming a socket and nothing naming the
+	// stale line in a config file that caused it.
+	if a.agent != nil {
+		if err := a.agent.UseServer(srv.BaseURL, srv.Fingerprint); err != nil {
+			a.logf("could not record this machine's own server address: %v", err)
+		}
+	}
 	return nil
 }
 

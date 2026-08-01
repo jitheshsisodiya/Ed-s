@@ -28,6 +28,7 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/jitheshsisodiya/Ed-s/backend/internal/auth"
 	"github.com/jitheshsisodiya/Ed-s/backend/internal/repository/embedded"
@@ -253,6 +254,14 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 	}
 
 	grpcServer := grpc.NewServer(
+		// The same certificate the REST side uses. Coordination carries the
+		// access token in its metadata on every call, so leaving this in
+		// plaintext would hand that token to anything on the path — which,
+		// once the router forwards the port, is the internet.
+		grpc.Creds(credentials.NewTLS(&tls.Config{
+			Certificates: []tls.Certificate{id.cert},
+			MinVersion:   tls.VersionTLS12,
+		})),
 		grpc.ChainUnaryInterceptor(
 			coordgrpc.RecoveryUnaryInterceptor(logger),
 			coordgrpc.AuthUnaryInterceptor(tokens),

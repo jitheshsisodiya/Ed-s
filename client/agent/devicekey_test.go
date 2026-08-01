@@ -198,3 +198,71 @@ func TestIsStaleKeyRejection(t *testing.T) {
 		t.Fatal("an ordinary error was mistaken for a rejected key")
 	}
 }
+
+// TestUseServerCorrectsAStaleAddress reproduces what a real installation hit.
+//
+// It had signed in when the control plane spoke plain HTTP, so its config
+// said http://127.0.0.1:8080. The server was then upgraded to TLS on the same
+// port, and every request went on being sent as plaintext to a TLS listener,
+// which closed the connection. The error named a socket; the cause was a line
+// in a config file nothing was ever going to update.
+func TestUseServerCorrectsAStaleAddress(t *testing.T) {
+	a := newTestAgent(t)
+
+	if _, err := a.store.Update(func(c *config.Config) error {
+		c.ServerURL = "http://127.0.0.1:8080"
+		c.AccessToken = "an-existing-session"
+		c.UserEmail = "someone@example.com"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	const fingerprint = "aee195632066bcf54bd127965c554a010fdfb5e36576b925d1a89ecd610571e5"
+	if err := a.UseServer("https://127.0.0.1:8080", fingerprint); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := a.store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ServerURL != "https://127.0.0.1:8080" {
+		t.Fatalf("server url = %q, still the stale one", cfg.ServerURL)
+	}
+	if cfg.ServerFingerprint != fingerprint {
+		t.Fatalf("fingerprint = %q, want the server's", cfg.ServerFingerprint)
+	}
+
+	// A machine reissuing its own certificate is not a reason to sign
+	// somebody out, and doing so would be a baffling way to report it.
+	if cfg.AccessToken != "an-existing-session" {
+		t.Fatal("the session was discarded along with the address")
+	}
+	if cfg.UserEmail != "someone@example.com" {
+		t.Fatal("the account was forgotten along with the address")
+	}
+}
+
+func TestUseServerRefusesAnEmptyAddress(t *testing.T) {
+	a := newTestAgent(t)
+	if err := a.UseServer("  ", "abc"); err == nil {
+		t.Fatal("accepted an empty server address, which would leave the engine pointing nowhere")
+	}
+}
+
+// A trailing slash makes every request path double up its separator, which
+// some routers and proxies answer with a 404.
+func TestUseServerTrimsATrailingSlash(t *testing.T) {
+	a := newTestAgent(t)
+	if err := a.UseServer("https://127.0.0.1:8080/", ""); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := a.store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ServerURL != "https://127.0.0.1:8080" {
+		t.Fatalf("server url = %q", cfg.ServerURL)
+	}
+}
