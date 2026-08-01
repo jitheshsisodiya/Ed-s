@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'api_client.dart';
 import 'invite.dart';
 import 'pairing.dart';
+import 'reachability.dart';
 import 'server_url.dart';
 import 'app_exception.dart';
 import 'models/models.dart';
@@ -78,13 +79,33 @@ class AuthProvider extends ChangeNotifier {
       status = AuthStatus.authenticated;
       return true;
     } on ApiException catch (e) {
-      errorMessage = e.message;
+      errorMessage = e.isNetworkFailure
+          ? await _explainNetworkFailure(e, await api.baseUrl)
+          : e.message;
       status = AuthStatus.unauthenticated;
       return false;
     } finally {
       busy = false;
       notifyListeners();
     }
+  }
+
+  /// Puts the likeliest cause in front of the general message.
+  ///
+  /// A timeout against a private address from a phone on mobile data is the
+  /// commonest failure there is here, and the general message sends somebody
+  /// to re-check an address that is already correct.
+  Future<String> _explainNetworkFailure(ApiException e, String serverUrl) async {
+    final scheme = Reachability.explainScheme(
+      serverUrl: serverUrl,
+      error: e.message,
+    );
+    if (scheme != null) return '$scheme\n\n${e.message}';
+
+    final host = Uri.tryParse(serverUrl)?.host ?? '';
+    if (host.isEmpty) return e.message;
+    final why = await Reachability.explain(host);
+    return why == null ? e.message : '$why\n\n${e.message}';
   }
 
   /// Signs in from a code scanned off a screen that is already signed in.
@@ -136,7 +157,7 @@ class AuthProvider extends ChangeNotifier {
       // out, and both look identical from here — deliberately, so a stolen
       // code cannot be told apart from a fabricated one.
       errorMessage = e.isNetworkFailure
-          ? e.message
+          ? await _explainNetworkFailure(e, parsed.serverUrl)
           : 'That code did not work. It only works once and expires after a '
               'few minutes — take a fresh one from your computer.';
       status = AuthStatus.unauthenticated;

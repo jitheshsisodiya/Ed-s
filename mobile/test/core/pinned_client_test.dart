@@ -39,8 +39,8 @@ void main() {
       'abcd',
       'zz',
     ]) {
-      test('${bad.isEmpty ? '(empty)' : bad}', () {
-        expect(PinnedHttpClient.normalizeFingerprint(bad), '');
+      test(bad.isEmpty ? '(empty)' : bad, () {
+        expect(PinnedHttpClient.normalizeFingerprint(bad), isEmpty);
         expect(PinnedHttpClient.isUsableFingerprint(bad), isFalse);
       });
     }
