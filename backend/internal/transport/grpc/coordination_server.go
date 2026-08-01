@@ -95,6 +95,7 @@ func (s *CoordinationServer) toProtoPeer(ctx context.Context, d *domain.Device) 
 		PublicKey:  d.PublicKey,
 		VirtualIp:  d.VirtualIP,
 		Os:         string(d.OS),
+		ExitNode:   d.AdvertisesExitNode,
 		Online:     d.Status == domain.DeviceStatusOnline,
 	}
 	if d.LastSeenAt != nil {
@@ -157,8 +158,14 @@ func (s *CoordinationServer) RegisterDevice(ctx context.Context, req *coordinati
 		return nil, status.Error(codes.InvalidArgument, "device_public_key is required")
 	}
 
-	result, err := s.svc.RegisterDevice(ctx, userID, networkID,
-		req.GetDevicePublicKey(), req.GetDeviceName(), req.GetOs(), req.GetOsVersion(), req.GetClientVersion())
+	result, err := s.svc.RegisterDevice(ctx, userID, networkID, usecase.RegisterDeviceInput{
+		PublicKey:         req.GetDevicePublicKey(),
+		DeviceName:        req.GetDeviceName(),
+		OS:                req.GetOs(),
+		OSVersion:         req.GetOsVersion(),
+		ClientVersion:     req.GetClientVersion(),
+		AdvertiseExitNode: req.GetAdvertiseExitNode(),
+	})
 	if err != nil {
 		return nil, toGRPCError(err)
 	}

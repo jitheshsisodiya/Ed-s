@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"runtime"
 	"strings"
@@ -22,6 +23,7 @@ import (
 	"github.com/jitheshsisodiya/Ed-s/client/internal/config"
 	"github.com/jitheshsisodiya/Ed-s/client/internal/coordination"
 	"github.com/jitheshsisodiya/Ed-s/client/internal/disco"
+	"github.com/jitheshsisodiya/Ed-s/client/internal/egress"
 	"github.com/jitheshsisodiya/Ed-s/client/internal/killswitch"
 	"github.com/jitheshsisodiya/Ed-s/client/internal/netroute"
 	"github.com/jitheshsisodiya/Ed-s/client/internal/tunnel"
@@ -65,7 +67,11 @@ type Peer struct {
 	DeviceName string `json:"deviceName"`
 	// OS is the peer's platform, so a frontend can show a recognisable
 	// icon per device rather than one generic glyph.
-	OS            string `json:"os"`
+	OS string `json:"os"`
+	// ExitNode reports that this peer has offered to carry all of this
+	// machine's traffic. It is an offer, not a state: UseExitNode is what
+	// accepts it.
+	ExitNode      bool   `json:"exitNode"`
 	VirtualIP     string `json:"virtualIp"`
 	Mode          string `json:"mode"`
 	Endpoint      string `json:"endpoint"`
@@ -171,6 +177,12 @@ type ConnectOptions struct {
 	InsecureSkipVerify bool
 	// ClientVersion is reported to the control plane.
 	ClientVersion string
+	// AdvertiseExitNode offers this machine to the rest of the network as
+	// a path to the internet, and turns on the forwarding and NAT that
+	// makes the offer real. Refused on platforms that cannot forward,
+	// because peers who accept a broken offer lose all of their internet,
+	// which is worse than never having been offered.
+	AdvertiseExitNode bool
 	// Logf receives engine progress messages.
 	Logf func(format string, args ...any)
 }
@@ -448,6 +460,11 @@ func (a *Agent) Connect(networkID string, opts ConnectOptions) error {
 	if runtime.GOOS != "windows" && os.Geteuid() != 0 {
 		return fmt.Errorf("creating a tunnel interface requires root/Administrator privileges")
 	}
+	if opts.AdvertiseExitNode && !egress.Supported() {
+		return fmt.Errorf("this device cannot act as an exit node on %s yet — "+
+			"using someone else's works everywhere, only offering to be one is limited",
+			runtime.GOOS)
+	}
 
 	logf := opts.Logf
 	if logf == nil {
@@ -527,12 +544,13 @@ func (a *Agent) Connect(networkID string, opts ConnectOptions) error {
 			_, err := probeConn.WriteToUDP([]byte{0}, addr)
 			return err
 		},
-		NetworkID:     networkID,
-		DeviceName:    cfg.DeviceName,
-		OS:            DeviceOS(),
-		OSVersion:     runtime.GOARCH,
-		ClientVersion: opts.ClientVersion,
-		PublicKey:     cfg.Keypair.PublicKey,
+		NetworkID:         networkID,
+		DeviceName:        cfg.DeviceName,
+		OS:                DeviceOS(),
+		OSVersion:         runtime.GOARCH,
+		ClientVersion:     opts.ClientVersion,
+		PublicKey:         cfg.Keypair.PublicKey,
+		AdvertiseExitNode: opts.AdvertiseExitNode,
 		// Exit-node mode is opt-in and off until UseExitNode is called, but
 		// the machinery is wired now so turning it on never has to
 		// reconstruct the tunnel.
@@ -570,6 +588,20 @@ func (a *Agent) Connect(networkID string, opts ConnectOptions) error {
 	}
 	if err := dev.AddRoute(netCIDR); err != nil {
 		return abort(fmt.Errorf("route %s via %s: %w", netCIDR, dev.Name(), err))
+	}
+
+	if opts.AdvertiseExitNode {
+		fwd := egress.New()
+		if err := fwd.Enable(egress.Config{
+			Interface:    dev.Name(),
+			TunnelPrefix: prefixOf(netCIDR),
+		}); err != nil {
+			return abort(fmt.Errorf("offer this device as an exit node: %w", err))
+		}
+		// Registered before anything else can fail, so a later abort still
+		// puts the machine's forwarding back.
+		closers = append(closers, func() { _ = fwd.Disable() })
+		logf("this device is now offering itself as an exit node")
 	}
 
 	if _, name, err := a.ResolveNetwork(networkID); err == nil && name != "" {
@@ -656,7 +688,8 @@ func (a *Agent) Status() Status {
 			handshake = p.LastHandshake.UTC().Format(time.RFC3339)
 		}
 		out.Peers = append(out.Peers, Peer{
-			DeviceID: p.DeviceID, DeviceName: p.DeviceName, OS: p.OS, VirtualIP: p.VirtualIP,
+			DeviceID: p.DeviceID, DeviceName: p.DeviceName, OS: p.OS,
+			ExitNode: p.ExitNode, VirtualIP: p.VirtualIP,
 			Mode: string(p.Mode), Endpoint: p.Endpoint, LastHandshake: handshake,
 			BytesSent: p.BytesSent, BytesReceived: p.BytesReceived,
 			LatencyMs: p.LatencyMs,
@@ -836,4 +869,19 @@ func (a *Agent) StopUsingExitNode() error {
 		return nil
 	}
 	return tun.ClearExitNode()
+}
+
+// prefixOf converts a net.IPNet to a netip.Prefix, which is what the egress
+// rules are scoped by. A malformed net yields the zero prefix, and Enable
+// refuses that rather than forwarding everything.
+func prefixOf(n *net.IPNet) netip.Prefix {
+	if n == nil {
+		return netip.Prefix{}
+	}
+	addr, ok := netip.AddrFromSlice(n.IP)
+	if !ok {
+		return netip.Prefix{}
+	}
+	ones, _ := n.Mask.Size()
+	return netip.PrefixFrom(addr.Unmap(), ones).Masked()
 }

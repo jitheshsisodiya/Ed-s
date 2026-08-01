@@ -58,8 +58,12 @@ type Device struct {
 	LastHandshakeAt *time.Time
 	BytesSent       int64
 	BytesReceived   int64
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	// AdvertisesExitNode records that this device has offered to carry
+	// other devices' internet traffic. Offering is not being used: a peer
+	// still has to choose it, and that choice lives on the client.
+	AdvertisesExitNode bool
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 // DeviceRepository persists Device aggregates.

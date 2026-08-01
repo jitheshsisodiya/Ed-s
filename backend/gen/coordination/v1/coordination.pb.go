@@ -203,8 +203,12 @@ type RegisterDeviceRequest struct {
 	Os              string                 `protobuf:"bytes,4,opt,name=os,proto3" json:"os,omitempty"`
 	OsVersion       string                 `protobuf:"bytes,5,opt,name=os_version,json=osVersion,proto3" json:"os_version,omitempty"`
 	ClientVersion   string                 `protobuf:"bytes,6,opt,name=client_version,json=clientVersion,proto3" json:"client_version,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// advertise_exit_node offers this device as a path to the internet for
+	// other devices on the network. Offering is not being used: a peer still
+	// chooses whether to route through it.
+	AdvertiseExitNode bool `protobuf:"varint,7,opt,name=advertise_exit_node,json=advertiseExitNode,proto3" json:"advertise_exit_node,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *RegisterDeviceRequest) Reset() {
@@ -277,6 +281,13 @@ func (x *RegisterDeviceRequest) GetClientVersion() string {
 		return x.ClientVersion
 	}
 	return ""
+}
+
+func (x *RegisterDeviceRequest) GetAdvertiseExitNode() bool {
+	if x != nil {
+		return x.AdvertiseExitNode
+	}
+	return false
 }
 
 type RegisterDeviceResponse struct {
@@ -368,7 +379,12 @@ type Peer struct {
 	// os is the peer's platform ("windows", "macos", "linux", "android",
 	// "ios", "windows_server" or "unknown"). Frontends use it to show a
 	// recognisable icon per device; it carries no security meaning.
-	Os            string `protobuf:"bytes,9,opt,name=os,proto3" json:"os,omitempty"`
+	Os string `protobuf:"bytes,9,opt,name=os,proto3" json:"os,omitempty"`
+	// exit_node reports that this peer has offered to carry other devices'
+	// internet traffic. A client that routes through it will have its whole
+	// default route on that peer, which is a materially different thing from
+	// reaching it on the mesh — so it is surfaced, never assumed.
+	ExitNode      bool `protobuf:"varint,10,opt,name=exit_node,json=exitNode,proto3" json:"exit_node,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -464,6 +480,13 @@ func (x *Peer) GetOs() string {
 		return x.Os
 	}
 	return ""
+}
+
+func (x *Peer) GetExitNode() bool {
+	if x != nil {
+		return x.ExitNode
+	}
+	return false
 }
 
 type HeartbeatRequest struct {
@@ -1014,7 +1037,7 @@ const file_proto_coordination_v1_coordination_proto_rawDesc = "" +
 	"\bEndpoint\x12\x0e\n" +
 	"\x02ip\x18\x01 \x01(\tR\x02ip\x12\x12\n" +
 	"\x04port\x18\x02 \x01(\rR\x04port\x12\x1a\n" +
-	"\bprotocol\x18\x03 \x01(\tR\bprotocol\"\xd9\x01\n" +
+	"\bprotocol\x18\x03 \x01(\tR\bprotocol\"\x89\x02\n" +
 	"\x15RegisterDeviceRequest\x12*\n" +
 	"\x11device_public_key\x18\x01 \x01(\tR\x0fdevicePublicKey\x12\x1d\n" +
 	"\n" +
@@ -1024,14 +1047,15 @@ const file_proto_coordination_v1_coordination_proto_rawDesc = "" +
 	"\x02os\x18\x04 \x01(\tR\x02os\x12\x1d\n" +
 	"\n" +
 	"os_version\x18\x05 \x01(\tR\tosVersion\x12%\n" +
-	"\x0eclient_version\x18\x06 \x01(\tR\rclientVersion\"\xf0\x01\n" +
+	"\x0eclient_version\x18\x06 \x01(\tR\rclientVersion\x12.\n" +
+	"\x13advertise_exit_node\x18\a \x01(\bR\x11advertiseExitNode\"\xf0\x01\n" +
 	"\x16RegisterDeviceResponse\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12.\n" +
 	"\x13assigned_virtual_ip\x18\x02 \x01(\tR\x11assignedVirtualIp\x12!\n" +
 	"\fnetwork_cidr\x18\x03 \x01(\tR\vnetworkCidr\x12\x1f\n" +
 	"\vdns_servers\x18\x04 \x03(\tR\n" +
 	"dnsServers\x12E\n" +
-	"\x0eexisting_peers\x18\x05 \x03(\v2\x1e.nexusvpn.coordination.v1.PeerR\rexistingPeers\"\xf5\x02\n" +
+	"\x0eexisting_peers\x18\x05 \x03(\v2\x1e.nexusvpn.coordination.v1.PeerR\rexistingPeers\"\x92\x03\n" +
 	"\x04Peer\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12\x1f\n" +
 	"\vdevice_name\x18\x02 \x01(\tR\n" +
@@ -1044,7 +1068,9 @@ const file_proto_coordination_v1_coordination_proto_rawDesc = "" +
 	"\bnat_type\x18\x06 \x01(\x0e2!.nexusvpn.coordination.v1.NATTypeR\anatType\x12\x16\n" +
 	"\x06online\x18\a \x01(\bR\x06online\x127\n" +
 	"\tlast_seen\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\blastSeen\x12\x0e\n" +
-	"\x02os\x18\t \x01(\tR\x02os\"\xcf\x02\n" +
+	"\x02os\x18\t \x01(\tR\x02os\x12\x1b\n" +
+	"\texit_node\x18\n" +
+	" \x01(\bR\bexitNode\"\xcf\x02\n" +
 	"\x10HeartbeatRequest\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12K\n" +
 	"\x0fpublic_endpoint\x18\x02 \x01(\v2\".nexusvpn.coordination.v1.EndpointR\x0epublicEndpoint\x12M\n" +

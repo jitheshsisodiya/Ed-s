@@ -43,7 +43,11 @@ type PeerStatus struct {
 	DeviceID   string
 	DeviceName string
 	// OS is the peer's platform, as reported by the control plane.
-	OS            string
+	OS string
+	// ExitNode reports that this peer has offered to carry this machine's
+	// internet traffic. Offering is not being used — SetExitNode is what
+	// takes them up on it.
+	ExitNode      bool
 	PublicKey     string
 	VirtualIP     string
 	Mode          ConnectionMode

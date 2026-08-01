@@ -21,14 +21,14 @@ func NewDeviceRepo(db Querier) *DeviceRepo {
 
 const deviceColumns = `id, user_id, network_id, name, os, os_version, public_key, virtual_ip::text,
 	last_public_ip::text, last_private_ip::text, nat_type, status, last_seen_at, last_handshake_at,
-	bytes_sent, bytes_received, created_at, updated_at`
+	bytes_sent, bytes_received, advertises_exit_node, created_at, updated_at`
 
 func scanDevice(row interface{ Scan(dest ...any) error }) (*domain.Device, error) {
 	var d domain.Device
 	if err := row.Scan(
 		&d.ID, &d.UserID, &d.NetworkID, &d.Name, &d.OS, &d.OSVersion, &d.PublicKey, &d.VirtualIP,
 		&d.LastPublicIP, &d.LastPrivateIP, &d.NATType, &d.Status, &d.LastSeenAt, &d.LastHandshakeAt,
-		&d.BytesSent, &d.BytesReceived, &d.CreatedAt, &d.UpdatedAt,
+		&d.BytesSent, &d.BytesReceived, &d.AdvertisesExitNode, &d.CreatedAt, &d.UpdatedAt,
 	); err != nil {
 		return nil, translateErr(err)
 	}
@@ -38,10 +38,11 @@ func scanDevice(row interface{ Scan(dest ...any) error }) (*domain.Device, error
 // Create inserts a new device row.
 func (r *DeviceRepo) Create(ctx context.Context, d *domain.Device) error {
 	row := r.db.QueryRow(ctx, `
-		INSERT INTO devices (id, user_id, network_id, name, os, os_version, public_key, virtual_ip, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8::inet, $9)
+		INSERT INTO devices (id, user_id, network_id, name, os, os_version, public_key, virtual_ip, status, advertises_exit_node)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8::inet, $9, $10)
 		RETURNING `+deviceColumns,
 		orNewID(d.ID), d.UserID, d.NetworkID, d.Name, d.OS, d.OSVersion, d.PublicKey, d.VirtualIP, d.Status,
+		d.AdvertisesExitNode,
 	)
 	saved, err := scanDevice(row)
 	if err != nil {
@@ -99,7 +100,7 @@ func (r *DeviceRepo) queryDevices(ctx context.Context, sql string, args ...any) 
 		if err := rows.Scan(
 			&d.ID, &d.UserID, &d.NetworkID, &d.Name, &d.OS, &d.OSVersion, &d.PublicKey, &d.VirtualIP,
 			&d.LastPublicIP, &d.LastPrivateIP, &d.NATType, &d.Status, &d.LastSeenAt, &d.LastHandshakeAt,
-			&d.BytesSent, &d.BytesReceived, &d.CreatedAt, &d.UpdatedAt,
+			&d.BytesSent, &d.BytesReceived, &d.AdvertisesExitNode, &d.CreatedAt, &d.UpdatedAt,
 		); err != nil {
 			return nil, translateErr(err)
 		}
@@ -111,10 +112,10 @@ func (r *DeviceRepo) queryDevices(ctx context.Context, sql string, args ...any) 
 // Update persists name/os/os_version changes to an existing device row.
 func (r *DeviceRepo) Update(ctx context.Context, d *domain.Device) error {
 	row := r.db.QueryRow(ctx, `
-		UPDATE devices SET name = $2, os = $3, os_version = $4
+		UPDATE devices SET name = $2, os = $3, os_version = $4, advertises_exit_node = $5
 		WHERE id = $1
 		RETURNING `+deviceColumns,
-		d.ID, d.Name, d.OS, d.OSVersion,
+		d.ID, d.Name, d.OS, d.OSVersion, d.AdvertisesExitNode,
 	)
 	saved, err := scanDevice(row)
 	if err != nil {

@@ -54,6 +54,10 @@ message RegisterDeviceRequest {
   string os = 4;
   string os_version = 5;
   string client_version = 6;
+  // advertise_exit_node offers this device as a path to the internet for
+  // other devices on the network. Offering is not being used: a peer still
+  // chooses whether to route through it.
+  bool advertise_exit_node = 7;
 }
 
 message RegisterDeviceResponse {
@@ -77,6 +81,11 @@ message Peer {
   // "ios", "windows_server" or "unknown"). Frontends use it to show a
   // recognisable icon per device; it carries no security meaning.
   string os = 9;
+  // exit_node reports that this peer has offered to carry other devices'
+  // internet traffic. A client that routes through it will have its whole
+  // default route on that peer, which is a materially different thing from
+  // reaching it on the mesh — so it is surfaced, never assumed.
+  bool exit_node = 10;
 }
 
 message HeartbeatRequest {

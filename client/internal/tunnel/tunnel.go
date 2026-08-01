@@ -60,6 +60,10 @@ type Options struct {
 	PublicKey string
 	// PreferredRegion biases relay selection.
 	PreferredRegion string
+	// AdvertiseExitNode offers this device to the rest of the network as a
+	// path to the internet. It is an offer only: peers still choose, and
+	// this device does nothing differently until one does.
+	AdvertiseExitNode bool
 
 	// Timer overrides; zero values fall back to the Default* constants.
 	HeartbeatInterval   time.Duration
@@ -193,6 +197,9 @@ func (t *Tunnel) Register(ctx context.Context) (*coordinationv1.RegisterDeviceRe
 		Os:              t.opts.OS,
 		OsVersion:       t.opts.OSVersion,
 		ClientVersion:   t.opts.ClientVersion,
+		// Re-stated on every registration rather than remembered, so
+		// withdrawing the offer is a matter of reconnecting without it.
+		AdvertiseExitNode: t.opts.AdvertiseExitNode,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("tunnel: register device: %w", err)

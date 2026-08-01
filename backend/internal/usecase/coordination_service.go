@@ -69,10 +69,25 @@ func NewCoordinationService(
 	}
 }
 
+// RegisterDeviceInput describes the device announcing itself. It is a
+// struct rather than a parameter list because the list had already reached
+// six interchangeable strings, where a transposed pair compiles cleanly and
+// registers a device with its OS as its name.
+type RegisterDeviceInput struct {
+	PublicKey     string
+	DeviceName    string
+	OS            string
+	OSVersion     string
+	ClientVersion string
+	// AdvertiseExitNode offers this device as a path to the internet for
+	// the rest of the network.
+	AdvertiseExitNode bool
+}
+
 // RegisterDevice authenticates userID as a member of networkID, then
 // looks up (by public key) or creates the device, assigning the next free
 // virtual IP. Returns the device plus the network's other known peers.
-func (s *CoordinationService) RegisterDevice(ctx context.Context, userID, networkID uuid.UUID, publicKey, deviceName, os, osVersion, clientVersion string) (*RegisteredDevice, error) {
+func (s *CoordinationService) RegisterDevice(ctx context.Context, userID, networkID uuid.UUID, in RegisterDeviceInput) (*RegisteredDevice, error) {
 	if _, err := s.members.Get(ctx, networkID, userID); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, domain.ErrForbidden
@@ -85,7 +100,7 @@ func (s *CoordinationService) RegisterDevice(ctx context.Context, userID, networ
 		return nil, err
 	}
 
-	d, err := s.devices.GetByPublicKey(ctx, publicKey)
+	d, err := s.devices.GetByPublicKey(ctx, in.PublicKey)
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return nil, err
 	}
@@ -94,9 +109,14 @@ func (s *CoordinationService) RegisterDevice(ctx context.Context, userID, networ
 		if d.NetworkID != networkID || d.UserID != userID {
 			return nil, domain.ErrForbidden
 		}
-		d.Name = deviceName
-		d.OS = domain.NormalizeDeviceOS(os)
-		d.OSVersion = osVersion
+		d.Name = in.DeviceName
+		d.OS = domain.NormalizeDeviceOS(in.OS)
+		d.OSVersion = in.OSVersion
+		// Willingness is re-stated on every registration rather than
+		// remembered, so revoking the offer is a matter of reconnecting
+		// without it — a device that has stopped advertising must not keep
+		// being advertised to its peers.
+		d.AdvertisesExitNode = in.AdvertiseExitNode
 		if err := s.devices.Update(ctx, d); err != nil {
 			return nil, err
 		}
@@ -106,15 +126,16 @@ func (s *CoordinationService) RegisterDevice(ctx context.Context, userID, networ
 			return nil, err
 		}
 		d = &domain.Device{
-			ID:        uuid.New(),
-			UserID:    userID,
-			NetworkID: networkID,
-			Name:      deviceName,
-			OS:        domain.NormalizeDeviceOS(os),
-			OSVersion: osVersion,
-			PublicKey: publicKey,
-			VirtualIP: ip,
-			Status:    domain.DeviceStatusUnknown,
+			ID:                 uuid.New(),
+			UserID:             userID,
+			NetworkID:          networkID,
+			Name:               in.DeviceName,
+			OS:                 domain.NormalizeDeviceOS(in.OS),
+			OSVersion:          in.OSVersion,
+			PublicKey:          in.PublicKey,
+			VirtualIP:          ip,
+			Status:             domain.DeviceStatusUnknown,
+			AdvertisesExitNode: in.AdvertiseExitNode,
 		}
 		if err := s.devices.Create(ctx, d); err != nil {
 			return nil, err
