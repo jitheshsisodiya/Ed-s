@@ -22,9 +22,30 @@ import (
 // path is genuinely broken rather than merely idle.
 const HandshakeStaleAfter = 3 * time.Minute
 
-// relayKeepalive keeps NAT mappings open on a relayed path, where there is
-// no direct pinhole to maintain.
-const relayKeepaliveSeconds = 25
+// keepaliveSeconds is how often a peer sends one small packet with nothing
+// in it. Twenty-five seconds is WireGuard's own recommendation, picked to sit
+// under the shortest UDP timeout routers use in practice.
+//
+// Every peer gets it, not only relayed ones. Two machines that punch a hole
+// through their NATs and then fall silent lose the hole: the router forgets
+// the mapping after somewhere between thirty seconds and a couple of minutes,
+// and the next packet arrives at a door that is no longer open. That is what
+// an idle mesh looks like from the outside — and it was being reported as a
+// path that had failed, minutes after a connection that was working fine.
+//
+// It also makes presence observable. A keepalive moves the receive counter,
+// so a peer that has sent nothing at all has genuinely gone away, rather than
+// merely having had nothing to say.
+const keepaliveSeconds = 25
+
+// PeerSilentAfter is how long a peer can send nothing — not a keepalive, not
+// a handshake, not a byte — before it is shown as offline.
+//
+// Three missed keepalives: far enough apart that one dropped packet on a
+// mobile network is not reported as a machine going away, close enough that a
+// machine that really did go away stops being listed while the person who
+// closed its lid is still looking at the screen.
+const PeerSilentAfter = 75 * time.Second
 
 // peer holds the orchestrator's per-peer connection state.
 type peer struct {
@@ -48,6 +69,18 @@ type peer struct {
 	// lastAttempt throttles renegotiation so a permanently unreachable peer
 	// doesn't spin.
 	lastAttempt time.Time
+
+	// lastRx is the receive counter as of lastRxMove, the moment it last
+	// changed. With a keepalive on every peer, this pair is what presence
+	// actually is: something arrives at least every keepaliveSeconds from a
+	// machine that is there, and nothing at all arrives from one that isn't.
+	//
+	// Handshake age used to stand in for this, and it is a poor stand-in: a
+	// healthy session only rekeys every couple of minutes, so a machine that
+	// vanished looked present for three, and the list of who is online was
+	// three minutes behind the truth.
+	lastRx     uint64
+	lastRxMove time.Time
 }
 
 // snapshot builds a PeerStatus, merging live WireGuard counters and the
@@ -154,9 +187,10 @@ func (t *Tunnel) addPeer(ctx context.Context, p *coordinationv1.Peer) error {
 	// can start handshaking immediately; the negotiation below upgrades or
 	// replaces that path.
 	cfg := wireguard.PeerConfig{
-		PublicKeyBase64: pr.publicKey,
-		Endpoint:        pr.remote,
-		AllowedIPs:      allowed,
+		PublicKeyBase64:            pr.publicKey,
+		Endpoint:                   pr.remote,
+		AllowedIPs:                 allowed,
+		PersistentKeepaliveSeconds: keepaliveSeconds,
 	}
 	if err := t.dev.UpsertPeer(cfg); err != nil {
 		return fmt.Errorf("tunnel: add wireguard peer: %w", err)
@@ -380,8 +414,7 @@ func (t *Tunnel) fallBackToRelay(ctx context.Context, pr *peer) {
 		return
 	}
 
-	// Point WireGuard at the loopback proxy and enable keepalives, since a
-	// relayed path has no direct pinhole to maintain.
+	// Point WireGuard at the loopback proxy.
 	allowed, err := allowedIPsFor(pr.virtualIP)
 	if err != nil {
 		_ = proxy.Close()
@@ -392,7 +425,7 @@ func (t *Tunnel) fallBackToRelay(ctx context.Context, pr *peer) {
 		PublicKeyBase64:            pr.publicKey,
 		Endpoint:                   proxy.LocalEndpoint(),
 		AllowedIPs:                 allowed,
-		PersistentKeepaliveSeconds: relayKeepaliveSeconds,
+		PersistentKeepaliveSeconds: keepaliveSeconds,
 	})
 	if err != nil {
 		_ = proxy.Close()

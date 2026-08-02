@@ -240,13 +240,12 @@ func (t *Tunnel) updatePeerAllowedIPs(pr *peer, allowed []net.IPNet) error {
 		PublicKeyBase64: pr.publicKey,
 		Endpoint:        pr.remote,
 		AllowedIPs:      allowed,
+		// Widening AllowedIPs must not quietly turn the keepalive off and
+		// let the path go cold, which is what omitting it here would do.
+		PersistentKeepaliveSeconds: keepaliveSeconds,
 	}
 	if pr.proxy != nil {
-		// A relayed peer keeps its keepalive: the relay's NAT mapping has
-		// to stay warm, and widening AllowedIPs must not quietly turn that
-		// off and let the path go cold.
 		cfg.Endpoint = pr.proxy.LocalEndpoint()
-		cfg.PersistentKeepaliveSeconds = relayKeepaliveSeconds
 	}
 	pr.mu.Unlock()
 

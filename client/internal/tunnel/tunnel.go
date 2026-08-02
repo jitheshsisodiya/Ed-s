@@ -21,8 +21,13 @@ import (
 
 // Defaults for the orchestrator's timers.
 const (
-	DefaultHeartbeatInterval   = 20 * time.Second
-	DefaultMonitorInterval     = 15 * time.Second
+	DefaultHeartbeatInterval = 20 * time.Second
+	DefaultMonitorInterval   = 15 * time.Second
+
+	// observeInterval is how often the tunnel re-reads what it can already
+	// see. Short, because it costs nothing and because a device list that
+	// takes fifteen seconds to notice a machine is one nobody trusts.
+	observeInterval            = 2 * time.Second
 	DefaultPunchTimeout        = 5 * time.Second
 	DefaultRenegotiateInterval = 30 * time.Second
 	defaultStreamRetryBase     = time.Second
@@ -495,18 +500,92 @@ func (t *Tunnel) handleEndpointChange(ctx context.Context, deviceID uuid.UUID, p
 
 // monitorLoop watches handshake freshness and renegotiates dead paths,
 // which is what makes reconnection automatic after a network change.
+//
+// The two jobs run at different rates because they cost different amounts.
+// Reading handshake freshness is a local socket call to the interface this
+// process already owns — no network traffic, no waiting — so it can happen
+// often enough that a machine coming online is visible almost immediately
+// rather than up to a quarter of a minute later. Renegotiating a dead path
+// means hole punching, which is real traffic to real peers, and doing that
+// every few seconds would be worse than the staleness it fixes.
 func (t *Tunnel) monitorLoop(ctx context.Context) {
-	ticker := time.NewTicker(t.monitorInterval)
-	defer ticker.Stop()
+	observe := time.NewTicker(observeInterval)
+	defer observe.Stop()
+	renegotiate := time.NewTicker(t.monitorInterval)
+	defer renegotiate.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-observe.C:
+			t.observePeerModes()
+			t.observeHealth()
+		case <-renegotiate.C:
 			t.checkPeerHealth(ctx)
 			t.observeHealth()
 		}
+	}
+}
+
+// observePeerModes refreshes which peers are present, without trying to
+// change anything.
+//
+// Presence is "has this peer sent anything lately", read off the receive
+// counter. Every peer carries a keepalive, so one that is switched on and
+// reachable moves that counter every keepaliveSeconds whether or not anybody
+// is using the tunnel — and one that has moved nothing for PeerSilentAfter
+// has gone, with no traffic sent to find that out.
+//
+// Cheap by construction: the counter comes from the WireGuard interface this
+// process already owns, so the whole pass is a handful of local reads however
+// many peers there are. That is what lets it run every couple of seconds
+// instead of riding along with renegotiation.
+func (t *Tunnel) observePeerModes() {
+	if t.dev == nil {
+		return
+	}
+
+	t.mu.Lock()
+	peers := make([]*peer, 0, len(t.peers))
+	for _, pr := range t.peers {
+		peers = append(peers, pr)
+	}
+	t.mu.Unlock()
+
+	now := time.Now()
+	for _, pr := range peers {
+		stats, ok, err := t.dev.PeerStats(pr.publicKey)
+		if err != nil || !ok {
+			continue
+		}
+
+		pr.mu.Lock()
+		if stats.RxBytes != pr.lastRx {
+			pr.lastRx = stats.RxBytes
+			pr.lastRxMove = now
+		}
+		// A zero lastRxMove means nothing has ever arrived from this peer,
+		// which is not the same as silence after contact and must not be
+		// read as recent.
+		present := !pr.lastRxMove.IsZero() && now.Sub(pr.lastRxMove) < PeerSilentAfter
+
+		switch {
+		case present && pr.mode == ModeOffline:
+			// It is back. Which path it is on was settled by the negotiation
+			// that produced it; this only records that it is there.
+			if pr.proxy != nil {
+				pr.mode = ModeRelay
+			} else {
+				pr.mode = ModeDirect
+			}
+		case !present && pr.mode != ModeOffline && pr.mode != ModeConnecting:
+			// A peer still negotiating is left alone: it has never been
+			// heard from yet, and saying "offline" about a connection
+			// attempt in progress is just describing it wrongly.
+			pr.mode = ModeOffline
+		}
+		pr.mu.Unlock()
 	}
 }
 
@@ -527,16 +606,11 @@ func (t *Tunnel) checkPeerHealth(ctx context.Context) {
 
 		fresh := !stats.LastHandshake.IsZero() && time.Since(stats.LastHandshake) < HandshakeStaleAfter
 		if fresh {
-			// A path that's working shouldn't be disturbed, but do record
-			// that a peer we thought was offline has come back.
+			// A path that's working shouldn't be disturbed. Whether the peer
+			// is present is not decided here: observePeerModes owns that, and
+			// two places writing the same field on different clocks is how a
+			// device list ends up flickering between online and offline.
 			pr.mu.Lock()
-			if pr.mode == ModeOffline || pr.mode == ModeConnecting {
-				if pr.proxy != nil {
-					pr.mode = ModeRelay
-				} else {
-					pr.mode = ModeDirect
-				}
-			}
 			mode := pr.mode
 			pr.mu.Unlock()
 

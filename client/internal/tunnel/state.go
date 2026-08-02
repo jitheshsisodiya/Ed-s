@@ -54,11 +54,11 @@ func (t *Tunnel) setState(next State) {
 
 	switch next {
 	case StateActive:
-		t.logf("tunnel is up")
+		t.say("tunnel is up")
 	case StateDropped:
 		// Worth a line at any log level: this is the transition that
 		// silently exposes traffic when an exit node is configured.
-		t.logf("tunnel dropped while it was up")
+		t.say("tunnel dropped while it was up")
 	}
 }
 
@@ -98,31 +98,53 @@ func (t *Tunnel) observeHealth() {
 	}
 	t.mu.Unlock()
 
-	if len(peers) == 0 {
-		// A network with no other devices is not a broken tunnel. There is
-		// nothing to be reachable, so the interface being up is all the
-		// health there is.
+	// Without an exit node, this tunnel's health is not a function of whether
+	// anybody else happens to be switched on.
+	//
+	// It used to be, and the result was a machine reporting itself as
+	// connecting — forever — because the only other device on the network was
+	// a phone in somebody's pocket with its screen off, and reporting itself
+	// as dropped the moment that phone went away. Neither was true: the
+	// interface is up, this device is registered, and it is reachable by
+	// anything that comes looking. Whether a particular peer is awake is that
+	// peer's business, and the device list already says so per machine.
+	//
+	// Crying wolf about the ordinary state leaves nothing to say when
+	// something is genuinely wrong, and StateDropped is what has to mean
+	// something.
+	if !hasExit {
 		if t.State() == StateHandshaking {
 			t.setState(StateActive)
 		}
 		return
 	}
 
+	if len(peers) == 0 {
+		// An exit node was chosen and there is no longer a peer for it. That
+		// is traffic with nowhere to go.
+		if t.State() == StateActive {
+			t.setState(StateDropped)
+		}
+		return
+	}
+
+	// With an exit node, only its health decides: it is the peer carrying
+	// everything, and if it is unreachable then traffic the user believes is
+	// tunnelled is about to leave in the clear. That is the case the kill
+	// switch exists for, and the one worth calling a drop.
 	reachable := false
 	for _, pr := range peers {
 		pr.mu.Lock()
 		id, mode := pr.deviceID, pr.mode
 		pr.mu.Unlock()
 
-		if hasExit && id != exitID {
-			// Only the exit node's health decides, because it is the only
-			// peer carrying anything that matters.
+		if id != exitID {
 			continue
 		}
 		if mode == ModeDirect || mode == ModeRelay {
 			reachable = true
-			break
 		}
+		break
 	}
 
 	switch {
@@ -130,5 +152,16 @@ func (t *Tunnel) observeHealth() {
 		t.setState(StateActive)
 	case t.State() == StateActive:
 		t.setState(StateDropped)
+	}
+}
+
+// say writes a line if there is anywhere to write it.
+//
+// setState runs on every health observation, including on a Tunnel built
+// directly rather than through New — which is what a test does, and what a
+// future caller might. A state transition is the wrong place to panic.
+func (t *Tunnel) say(format string, args ...any) {
+	if t.logf != nil {
+		t.logf(format, args...)
 	}
 }

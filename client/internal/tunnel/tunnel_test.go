@@ -26,16 +26,33 @@ type fakeDevice struct {
 
 	peers     map[string]wireguard.PeerConfig
 	handshake map[string]time.Time
-	removed   []string
-	upserts   int
-	closed    bool
+	// rx overrides the received-byte counter per peer, which is what
+	// presence is read from. Absent means the default below.
+	rx      map[string]uint64
+	removed []string
+	upserts int
+	closed  bool
 }
+
+const fakeRxBytes = 200
 
 func newFakeDevice() *fakeDevice {
 	return &fakeDevice{
 		peers:     map[string]wireguard.PeerConfig{},
 		handshake: map[string]time.Time{},
+		rx:        map[string]uint64{},
 	}
+}
+
+// receive moves a peer's received-byte counter, the way a keepalive arriving
+// from a machine that is switched on does.
+func (d *fakeDevice) receive(key string, n uint64) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if _, ok := d.rx[key]; !ok {
+		d.rx[key] = fakeRxBytes
+	}
+	d.rx[key] += n
 }
 
 func (d *fakeDevice) Name() string { return "nexus-test0" }
@@ -77,11 +94,15 @@ func (d *fakeDevice) PeerStats(key string) (wireguard.PeerStats, bool, error) {
 	if !ok {
 		return wireguard.PeerStats{}, false, nil
 	}
+	rx, ok := d.rx[key]
+	if !ok {
+		rx = fakeRxBytes
+	}
 	stats := wireguard.PeerStats{
 		PublicKeyBase64: key,
 		LastHandshake:   d.handshake[key],
 		TxBytes:         100,
-		RxBytes:         200,
+		RxBytes:         rx,
 	}
 	if p.Endpoint != nil {
 		stats.Endpoint = p.Endpoint.String()
@@ -590,10 +611,17 @@ func TestSuccessfulHolePunchYieldsDirectMode(t *testing.T) {
 		}},
 	}
 
-	// A handshake lands as soon as punching starts.
-	dev.setHandshake(p.GetPublicKey(), time.Now().Add(time.Second))
-
-	tun := newTestTunnel(t, dev, coord)
+	// A handshake lands as soon as punching starts, which means it has to
+	// land *because* of the probe. Stamping a future timestamp up front
+	// instead would sit at or below the baseline Punch records before it
+	// starts, so no handshake would ever count as fresh and the punch could
+	// only fail — which is not what this test is about.
+	tun := newTestTunnel(t, dev, coord, func(o *Options) {
+		o.Prober = func(*net.UDPAddr) error {
+			dev.setHandshake(p.GetPublicKey(), time.Now())
+			return nil
+		}
+	})
 	runTunnel(t, tun)
 
 	eventually(t, 3*time.Second, "direct connection", func() bool {
