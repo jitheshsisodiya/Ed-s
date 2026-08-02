@@ -9,7 +9,7 @@
   "info": {
     "companyName": "NexusVPN",
     "productName": "NexusVPN",
-    "productVersion": "0.6.0",
+    "productVersion": "0.7.0",
     "comments": "Virtual LAN over WireGuard",
     "protocols": [
       {
