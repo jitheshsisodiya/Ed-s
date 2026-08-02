@@ -287,6 +287,12 @@ func (a *App) startup(ctx context.Context) {
 	if r := loadRole(); r.Chosen && r.Host {
 		if err := a.startServer(); err != nil {
 			a.startupErr = err.Error()
+			return
+		}
+		if err := a.adoptThisMachine(); err != nil {
+			// Not fatal, and not silent: the sign-in form is still there, and
+			// this line is what explains why it appeared.
+			a.logf("this machine could not sign into its own network: %v", err)
 		}
 	}
 }
@@ -364,6 +370,9 @@ func (a *App) SetServerRole(host bool) error {
 		// launch asks again instead of silently failing to host forever.
 		_ = saveRole(role{})
 		return err
+	}
+	if err := a.adoptThisMachine(); err != nil {
+		a.logf("this machine could not sign into its own network: %v", err)
 	}
 	a.startupErr = ""
 	return nil
@@ -650,8 +659,82 @@ func (a *App) StopUsingExitNode() error {
 	return a.agent.StopUsingExitNode()
 }
 
-// StartPairing issues a code that signs a phone in as this account, on this
-// network, without anything being typed on it.
+// ClaimPairing redeems a pairing code taken from the machine hosting the
+// network, and reports which network to connect to.
+//
+// The same code the phone scans. A second computer has no camera pointed at
+// the first one's screen, so it pastes the link instead — but what it does
+// with it, and what it is trusting, is identical: a single-use code that
+// expires in minutes and carries both the server's address and the
+// certificate that server has to present.
+func (a *App) ClaimPairing(link string) (string, error) {
+	if err := a.ready(); err != nil {
+		return "", err
+	}
+	return a.agent.ClaimPairing(a.ctx, link)
+}
+
+// AdoptThisMachine signs this app back into the network it hosts.
+//
+// Startup does this by itself, so the button this backs is only ever reached
+// after somebody signed out — which on a machine hosting its own network is
+// a dead end otherwise, since the credentials it would then be asking for are
+// ones nobody ever chose.
+func (a *App) AdoptThisMachine() error {
+	if err := a.ready(); err != nil {
+		return err
+	}
+	return a.adoptThisMachine()
+}
+
+// adoptThisMachine signs this app into the control plane it is hosting,
+// creating the account on first run.
+//
+// Nobody is asked to invent a login for their own PC. See owner.go for why
+// that is not a shortcut: the credential this generates is stronger than any
+// a person would have chosen, and the thing a typed password would have
+// protected is already protected by the same directory permissions.
+//
+// Errors are reported, not swallowed, and the sign-in form remains for the
+// cases this cannot cover — an account somebody made by hand, or a machine
+// pointed at a control plane it does not host.
+func (a *App) adoptThisMachine() error {
+	if a.agent == nil || a.server == nil {
+		return errors.New("this machine is not hosting a network")
+	}
+	if s, err := a.agent.Session(); err == nil && s.LoggedIn {
+		return nil
+	}
+
+	o, saved := loadOwner()
+	if a.server.IsFirstRun() {
+		if !saved {
+			hostname, _ := os.Hostname()
+			fresh, err := newOwner(hostname)
+			if err != nil {
+				return err
+			}
+			o = fresh
+		}
+		// Saved first: an account that exists with a secret nobody kept is a
+		// control plane locked against the machine running it.
+		if err := saveOwner(o); err != nil {
+			return err
+		}
+		return a.agent.Register(a.ctx, a.server.BaseURL, o.Email, o.Password, o.Name)
+	}
+
+	if !saved {
+		// An account exists that this app did not make — somebody registered
+		// by hand, or carried a data directory across. Guessing is not
+		// available, so the form asks.
+		return errors.New("this machine already has an account that has to be signed into")
+	}
+	return a.agent.Login(a.ctx, a.server.BaseURL, o.Email, o.Password, "")
+}
+
+// StartPairing issues a code that signs another device in as this account, on
+// this network, without anything being typed on it.
 func (a *App) StartPairing(networkID string) (agent.PairingLink, error) {
 	if err := a.ready(); err != nil {
 		return agent.PairingLink{}, err

@@ -1,23 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import qr from 'qrcode-generator';
 
-import { StartPairing } from '../wailsjs/go/main/App';
+import { CopyToClipboard, StartPairing } from '../wailsjs/go/main/App';
 import type { agent } from '../wailsjs/go/models';
 
 import Dialog, { Primary, Secondary } from './Dialog';
 
 /**
- * Adding your own phone.
+ * Adding another device — a phone, or a second computer.
  *
- * The alternative is typing a server address, an email and a password on a
- * touchscreen, and the address is the part nobody can be expected to know —
+ * The alternative is typing a server address, an email and a password on the
+ * other device, and the address is the part nobody can be expected to know —
  * it is whatever private address the router handed this machine. So the code
- * carries the address with it, and the phone is told nothing at all.
+ * carries the address with it, and the other device is told nothing at all.
  *
- * The code is single use and expires in minutes, which is what makes putting
- * it on a screen acceptable. Both facts are shown rather than assumed, because
- * a code that has quietly gone stale looks exactly like one that does not
- * work.
+ * A phone scans it. A computer has no camera pointed at this screen, so it
+ * gets the same code as text to paste; the QR is a delivery mechanism, not the
+ * security. What is being trusted either way is a code that works once, dies
+ * in minutes, and names the certificate the server has to present.
+ *
+ * Both of those facts are shown rather than assumed, because a code that has
+ * quietly gone stale looks exactly like one that does not work.
  */
 export default function PairPhone({
   network,
@@ -30,10 +33,14 @@ export default function PairPhone({
   const [error, setError] = useState('');
   const [remaining, setRemaining] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const issue = useCallback(() => {
     setBusy(true);
     setError('');
+    // A new code makes the old one worthless, so the button must stop
+    // claiming the clipboard holds anything useful.
+    setCopied(false);
     StartPairing(network.id)
       .then((l) => {
         setLink(l);
@@ -66,7 +73,7 @@ export default function PairPhone({
 
   return (
     <Dialog
-      title="Add your phone"
+      title="Add a device"
       onClose={onClose}
       width={420}
       footer={
@@ -80,9 +87,10 @@ export default function PairPhone({
     >
       <div className="flex flex-col items-center p-4">
         <p className="mb-3 text-center text-[12px] leading-relaxed text-ink-dim">
-          Open NexusVPN on your phone and tap <strong className="text-ink">Scan</strong>. It
-          will join <strong className="text-ink">{network.name}</strong> as you — no address,
-          no password to type.
+          On a phone, tap <strong className="text-ink">Scan</strong>. On another computer,
+          copy the link below and paste it there. Either way it joins{' '}
+          <strong className="text-ink">{network.name}</strong> as you — no address, no
+          password to type.
         </p>
 
         <QRPanel value={link?.url ?? ''} dimmed={expired || busy} />
@@ -98,6 +106,21 @@ export default function PairPhone({
             Works once, and only for the next {formatRemaining(remaining)}. Anyone who scans it
             is signed in as you, so do not leave it on screen.
           </p>
+        )}
+
+        {link?.url && !expired && (
+          <button
+            type="button"
+            onClick={() => {
+              void CopyToClipboard(link.url).then(
+                () => setCopied(true),
+                () => setError('Could not reach the clipboard.'),
+              );
+            }}
+            className="mt-3 border border-deck-line px-3 py-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-dim transition-colors hover:border-live/50 hover:text-live"
+          >
+            {copied ? 'link copied' : 'copy link for a computer'}
+          </button>
         )}
 
         {link?.serverUrl && (

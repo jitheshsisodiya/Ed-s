@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 
 import {
+  AdoptThisMachine,
+  ClaimPairing,
   Connect,
   CopyToClipboard,
   CreateNetwork,
@@ -1262,6 +1264,13 @@ function Access({
   // appears only for somebody pointing at a server they did not start.
   const local = server?.running ?? false;
   const joining = (server?.chosen ?? false) && !(server?.host ?? false);
+  // A machine joining somebody else's network pastes a pairing code, the same
+  // one a phone scans. Nobody is asked for an address they cannot know and a
+  // password for an account that, on a self-hosted network, exists only so
+  // this screen has something to ask for. The account form stays one click
+  // away for a real deployment with real users.
+  const [pairing, setPairing] = useState(joining);
+  const [link, setLink] = useState('');
   const [creating, setCreating] = useState(server?.firstRun ?? false);
   const [address, setAddress] = useState(defaultServer || server?.url || DEFAULT_SERVER);
   const [showServer, setShowServer] = useState(joining || (!local && defaultServer === ''));
@@ -1280,6 +1289,11 @@ function Access({
   const submit = (e: FormEvent) => {
     e.preventDefault();
     void run(async () => {
+      if (pairing) {
+        await ClaimPairing(link.trim());
+        await onDone();
+        return;
+      }
       if (creating) {
         await Register(address, email, password, name || email);
         await onDone();
@@ -1311,9 +1325,11 @@ function Access({
           Nexus<span className="text-live">VPN</span>
         </p>
         <p className="mb-5 mt-1.5 text-[12px] text-ink-dim">
-          {creating
-            ? 'Set up an account on this machine. It stays here — nothing is sent anywhere.'
-            : 'Your machines, on one network, wherever they are.'}
+          {pairing
+            ? 'On the machine hosting your network, open Add a device and copy the link.'
+            : creating
+              ? 'Set up an account on this machine. It stays here — nothing is sent anywhere.'
+              : 'Your machines, on one network, wherever they are.'}
         </p>
 
         <AnimatePresence>
@@ -1341,6 +1357,57 @@ function Access({
           )}
         </AnimatePresence>
 
+        {/* This machine hosts the network and made its own account, so there
+            is nothing here for a person to know. Reached only after signing
+            out, which would otherwise be a door that locks behind you. */}
+        {local && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void run(async () => { await AdoptThisMachine(); await onDone(); })}
+            className="mb-4 w-full border border-live/50 bg-live/12 py-2 font-mono text-[11px] font-semibold tracking-[0.16em] uppercase text-live transition-colors hover:bg-live/22 disabled:opacity-40"
+          >
+            {busy ? 'signing in' : 'use this machine’s account'}
+          </button>
+        )}
+
+        {pairing ? (
+          <div className="grid gap-3">
+            <label className="grid gap-1">
+              <span className="eyebrow">Pairing link</span>
+              <textarea
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
+                required
+                autoFocus
+                rows={3}
+                spellCheck={false}
+                placeholder="nexusvpn://pair?..."
+                className="w-full resize-none border border-deck-line bg-deck-800 px-2.5 py-2 font-mono text-[11px] leading-relaxed text-ink outline-none transition-colors focus:border-live/60"
+              />
+              <span className="text-[11px] leading-relaxed text-ink-faint">
+                Works once, and only for a few minutes. It carries the address and the
+                certificate, so there is nothing else to type.
+              </span>
+            </label>
+
+            <button
+              type="submit"
+              disabled={busy || link.trim() === ''}
+              className="mt-1 border border-live/50 bg-live/12 py-2 font-mono text-[11px] font-semibold tracking-[0.16em] uppercase text-live transition-colors hover:bg-live/22 disabled:opacity-40"
+            >
+              {busy ? 'joining' : 'join'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPairing(false)}
+              className="font-mono text-[10px] tracking-[0.12em] uppercase text-ink-faint transition-colors hover:text-live"
+            >
+              sign in with an account instead
+            </button>
+          </div>
+        ) : (
         <div className="grid gap-3">
           {creating && (
             <label className="grid gap-1">
@@ -1412,6 +1479,14 @@ function Access({
             {creating ? 'i already have an account' : 'create an account'}
           </button>
 
+          <button
+            type="button"
+            onClick={() => setPairing(true)}
+            className="font-mono text-[10px] tracking-[0.12em] uppercase text-ink-faint transition-colors hover:text-live"
+          >
+            use a pairing link instead
+          </button>
+
           {local && server?.lanUrl && (
             <p className="mt-1 text-[11px] leading-relaxed text-ink-faint">
               Other machines on your network join this one at{' '}
@@ -1419,6 +1494,7 @@ function Access({
             </p>
           )}
         </div>
+        )}
       </motion.form>
     </div>
   );

@@ -54,11 +54,21 @@ await page.addInitScript(() => {
 
 await page.goto(base);
 await page.waitForTimeout(900);
-await page.getByTitle('Add your phone to Office').click().catch(async () => { await page.locator('[aria-label="Add your phone to Office"]').click(); });
+await page.getByTitle('Add a device to Office').click().catch(async () => { await page.locator('[aria-label="Add a device to Office"]').click(); });
 await page.waitForTimeout(800);
 
 const svgCount = await page.locator('svg[width="100%"]').count();
 const text = await page.locator('body').innerText();
+
+// A second computer has no camera pointed at this screen, so the same code
+// has to be obtainable as text. Without this the QR is the only way out of
+// the dialog and pairing works for phones alone.
+const copy = page.getByRole('button', { name: /copy link/i });
+const copyable = (await copy.count()) > 0;
+if (copyable) await copy.click();
+await page.waitForTimeout(200);
+const afterCopy = await page.locator('body').innerText();
+
 if (process.argv[2]) await page.screenshot({ path: process.argv[2] });
 await browser.close();
 server.close();
@@ -66,8 +76,11 @@ server.close();
 console.log('QR rendered:', svgCount > 0);
 console.log('mentions single use:', /Works once/.test(text));
 console.log('shows the server:', /192\.168\.1\.20:8080/.test(text));
+console.log('offers the link as text:', copyable);
 if (svgCount === 0) throw new Error('FAIL: no QR code was drawn');
 
 if (!/Works once/.test(text)) throw new Error('FAIL: the code no longer says it is single use');
 if (!/192\.168\.1\.20:8080/.test(text)) throw new Error('FAIL: the server is not shown');
-console.log('PASS  the pairing dialog shows a code, its server, and its terms');
+if (!copyable) throw new Error('FAIL: the link cannot be copied, so no computer can be paired');
+if (!/link copied/i.test(afterCopy)) throw new Error('FAIL: copying gave no confirmation');
+console.log('PASS  the pairing dialog offers a code by QR and by link, with its terms');

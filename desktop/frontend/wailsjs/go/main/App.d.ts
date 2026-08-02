@@ -3,6 +3,10 @@
 import {agent} from '../models';
 import {main} from '../models';
 
+export function AdoptThisMachine():Promise<void>;
+
+export function ClaimPairing(arg1:string):Promise<string>;
+
 export function Connect(arg1:string):Promise<void>;
 
 export function CopyToClipboard(arg1:string):Promise<void>;

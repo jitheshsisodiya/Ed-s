@@ -119,7 +119,7 @@ export default function NetworkTree({
 
               <div className="ml-auto flex shrink-0 items-center gap-0.5">
                 <IconAction
-                  label={`Add your phone to ${n.name}`}
+                  label={`Add a device to ${n.name}`}
                   onClick={() => onPairPhone(n)}
                 >
                   <Smartphone size={12} />

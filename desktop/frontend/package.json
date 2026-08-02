@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test:e2e": "node e2e/session.mjs && node e2e/pairing.mjs && node e2e/reach.mjs"
+    "test:e2e": "node e2e/session.mjs && node e2e/pairing.mjs && node e2e/join.mjs && node e2e/hostaccess.mjs && node e2e/reach.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
